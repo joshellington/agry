@@ -23,6 +23,7 @@
     font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     -webkit-font-smoothing: antialiased;
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -60,7 +61,16 @@
   footer { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--faint); }
   a { color: var(--fg); text-decoration: none; }
   a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--faint); }
-  @media (max-width: 600px) { #sky { font-size: 11px; } }
+  @media (max-width: 600px) {
+    body { padding: 32px 16px; }
+    /* The copy fills the width here, so fade a band behind it instead. */
+    #sky {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.24);
+      -webkit-mask-image: linear-gradient(#000 14%, rgba(0, 0, 0, 0.3) 28%, rgba(0, 0, 0, 0.3) 72%, #000 86%);
+      mask-image: linear-gradient(#000 14%, rgba(0, 0, 0, 0.3) 28%, rgba(0, 0, 0, 0.3) 72%, #000 86%);
+    }
+  }
 </style>
 </head>
 <body>
@@ -73,7 +83,7 @@
   </svg>
   <h1>agry</h1>
   <p>A tiny macOS menu bar app that keeps your Mac awake while coding agents work, then lets it sleep.</p>
-  <p>Agents like Claude Code report what they're doing with <code>OSC 7501</code> status records. agry reads them for every session in Rex and holds off sleep for as long as each state warrants.</p>
+  <p>Agents like Claude Code report what they're doing with <a href="https://www.superlogical.com/rex/docs/build/program-status"><code>OSC 7501</code></a> status records. agry reads them for every session in Rex and holds off sleep for as long as each state warrants.</p>
   <dl>
     <dt>working</dt><dd>stay awake</dd>
     <dt>blocked</dt><dd>30 min, waiting on you</dd>
@@ -128,9 +138,11 @@
       rows = Math.ceil(innerHeight / cellHeight);
       aspect = cellWidth / cellHeight;
       farTop = [], nearTop = [];
+      // On portrait screens the copy reaches lower, so the ridges sit lower too.
+      const drop = innerHeight > innerWidth ? 0.08 : 0;
       for (let x = 0; x <= cols + 1; x++) {
-        farTop.push(ridge(x, 11, 0.72, 0.34));
-        nearTop.push(ridge(x, 47, 0.94, 0.22));
+        farTop.push(ridge(x, 11, 0.72 + drop, 0.34));
+        nearTop.push(ridge(x, 47, 0.94 + drop, 0.22));
       }
     }
 
