@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agry</title>
-<meta name="description" content="A tiny macOS menu bar app that keeps your Mac awake while coding agents work.">
+<meta name="description" content="A tiny macOS menu bar app that keeps your Mac awake while coding agents work, driven by OSC 7501 status from Rex.">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0b0c">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 16'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 10Q10 2 18.5 10Q10 18 1.5 10M10 4.4V1.6M5.9 5.3L4.7 2.9M14.1 5.3L15.3 2.9'/%3E%3C/g%3E%3Ccircle cx='10' cy='10' r='3' fill='%23fff'/%3E%3C/svg%3E">
 <style>
   :root {
@@ -14,6 +15,7 @@
     --dim: rgba(255, 255, 255, 0.55);
     --faint: rgba(255, 255, 255, 0.32);
     --hairline: rgba(255, 255, 255, 0.08);
+    --sky: rgba(255, 255, 255, 0.15);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); }
@@ -26,17 +28,43 @@
     justify-content: center;
     padding: 48px 16px;
   }
-  main { width: 100%; max-width: 360px; }
+  #sky {
+    position: fixed;
+    inset: 0;
+    margin: 0;
+    overflow: hidden;
+    font: 13px/1.2 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--sky);
+    white-space: pre;
+    pointer-events: none;
+    user-select: none;
+    /* Fade the scene out behind the copy so the text stays clean. */
+    -webkit-mask-image: radial-gradient(ellipse 340px 320px at 50% 50%, transparent 55%, #000 100%);
+    mask-image: radial-gradient(ellipse 340px 320px at 50% 50%, transparent 55%, #000 100%);
+  }
+  main { position: relative; width: 100%; max-width: 380px; }
   .eye { width: 40px; height: 32px; color: var(--fg); display: block; margin-bottom: 28px; }
   h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; }
   p { margin: 0 0 14px; color: var(--dim); }
+  code { font: 13px ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); }
+  dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 20px;
+    margin: 20px 0 0;
+    font-size: 13px;
+  }
+  dt { color: var(--faint); }
+  dd { margin: 0; color: var(--dim); }
   .rule { height: 1px; background: var(--hairline); margin: 28px 0 16px; border: 0; }
   footer { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--faint); }
   a { color: var(--fg); text-decoration: none; }
   a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--faint); }
+  @media (max-width: 600px) { #sky { font-size: 11px; } }
 </style>
 </head>
 <body>
+<pre id="sky" aria-hidden="true"></pre>
 <main>
   <svg class="eye" viewBox="0 0 20 16" aria-hidden="true">
     <path d="M1.5 10Q10 2 18.5 10Q10 18 1.5 10M10 4.4V1.6M5.9 5.3L4.7 2.9M14.1 5.3L15.3 2.9"
@@ -44,13 +72,130 @@
     <circle cx="10" cy="10" r="3" fill="currentColor"/>
   </svg>
   <h1>agry</h1>
-  <p>A tiny macOS menu bar app that keeps your Mac awake while coding agents are working, blocked, or just finished. Then it lets it sleep.</p>
-  <p>Reads agent status from Rex and Claude Code. Optional lid‑closed mode.</p>
+  <p>A tiny macOS menu bar app that keeps your Mac awake while coding agents work, then lets it sleep.</p>
+  <p>Agents like Claude Code report what they're doing with <code>OSC 7501</code> status records. agry reads them for every session in Rex and holds off sleep for as long as each state warrants.</p>
+  <dl>
+    <dt>working</dt><dd>stay awake</dd>
+    <dt>blocked</dt><dd>30 min, waiting on you</dd>
+    <dt>done</dt><dd>5 min</dd>
+    <dt>idle</dt><dd>sleep as usual</dd>
+  </dl>
   <hr class="rule">
   <footer>
     <span>Work in progress</span>
     <a href="https://github.com/joshellington/agry">GitHub</a>
   </footer>
 </main>
+<script>
+  // A night that agry keeps watch over: stars, a crescent moon, two ridges and
+  // drifting mist, drawn as text. One still frame when motion is reduced.
+  (function () {
+    const sky = document.getElementById("sky");
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let cols = 0, rows = 0, aspect = 0.5, farTop = [], nearTop = [];
+
+    function hash(x, y) {
+      const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+      return s - Math.floor(s);
+    }
+    function smooth(t) { return t * t * (3 - 2 * t); }
+    function noise1(x) {
+      const i = Math.floor(x), f = smooth(x - i);
+      return hash(i, 0) * (1 - f) + hash(i + 1, 0) * f;
+    }
+    function noise2(x, y) {
+      const i = Math.floor(x), j = Math.floor(y);
+      const fx = smooth(x - i), fy = smooth(y - j);
+      const top = hash(i, j) * (1 - fx) + hash(i + 1, j) * fx;
+      const bottom = hash(i, j + 1) * (1 - fx) + hash(i + 1, j + 1) * fx;
+      return top * (1 - fy) + bottom * fy;
+    }
+    function peak(x) { return 1 - Math.abs(2 * noise1(x) - 1); }
+    function ridge(x, seed, base, height) {
+      const n = 0.7 * peak(x * 0.045 + seed) + 0.3 * noise1(x * 0.16 + seed * 3);
+      return Math.round(rows * (base - height * n));
+    }
+
+    function measure() {
+      const probe = document.createElement("span");
+      probe.textContent = "M".repeat(100);
+      sky.textContent = "";
+      sky.appendChild(probe);
+      const box = probe.getBoundingClientRect();
+      const cellWidth = box.width / 100, cellHeight = box.height;
+      sky.removeChild(probe);
+      cols = Math.ceil(innerWidth / cellWidth);
+      rows = Math.ceil(innerHeight / cellHeight);
+      aspect = cellWidth / cellHeight;
+      farTop = [], nearTop = [];
+      for (let x = 0; x <= cols + 1; x++) {
+        farTop.push(ridge(x, 11, 0.72, 0.34));
+        nearTop.push(ridge(x, 47, 0.94, 0.22));
+      }
+    }
+
+    // The outline of a ridge at (x, y), or null when the cell is not on it.
+    // A cell is on the outline when sky is above it or beside it.
+    function edge(tops, x, y) {
+      const left = y < tops[Math.max(0, x - 1)], right = y < tops[x + 1];
+      if (y !== tops[x] && !left && !right) return null;
+      if (left && right) return "^";
+      if (left) return "/";
+      if (right) return "\\";
+      return "-";
+    }
+
+    function moon(x, y) {
+      const radius = Math.max(3, Math.min(rows * 0.11, cols * aspect * 0.1));
+      const dx = (x - cols * 0.8) * aspect, dy = y - rows * 0.2;
+      const d = Math.hypot(dx, dy);
+      const shade = Math.hypot(dx + radius * 0.4, dy - radius * 0.25) - radius;
+      if (d >= radius || shade < 0) return null;
+      return shade < 0.6 || d > radius - 0.6 ? "o" : "@";
+    }
+
+    function star(x, y, t) {
+      const h = hash(x, y);
+      if (h > 0.016) return null;
+      const glow = 0.5 + 0.5 * Math.sin(t * (0.4 + h * 60) + hash(y, x) * 6.28);
+      return glow > 0.85 ? "*" : glow > 0.5 ? "+" : glow > 0.2 ? "·" : ".";
+    }
+
+    function mist(x, y, t) {
+      const band = y / rows;
+      if (band < 0.5) return null;
+      const n = 0.6 * noise2(x * 0.05 - t * 0.04, y * 0.25) + 0.4 * noise2(x * 0.13 - t * 0.09, y * 0.5 + 9);
+      const v = n * Math.min(1, (band - 0.5) * 4);
+      return v > 0.62 ? "~" : v > 0.55 ? "-" : v > 0.5 ? "." : null;
+    }
+
+    function frame(t) {
+      let out = "";
+      for (let y = 0; y < rows; y++) {
+        let line = "";
+        for (let x = 0; x < cols; x++) {
+          let c;
+          if (y >= nearTop[x]) c = edge(nearTop, x, y) || " ";
+          else if (y >= farTop[x]) c = edge(farTop, x, y) || mist(x, y, t) || (hash(x, y) < 0.02 ? "." : " ");
+          else c = moon(x, y) || (y < farTop[x] - 2 && star(x, y, t)) || mist(x, y, t) || " ";
+          line += c;
+        }
+        out += line + "\n";
+      }
+      sky.textContent = out;
+    }
+
+    let last = 0;
+    function tick(now) {
+      if (now - last > 120) { frame(now / 1000); last = now; }
+      requestAnimationFrame(tick);
+    }
+
+    measure();
+    frame(0);
+    addEventListener("resize", () => { measure(); frame(last / 1000); });
+    if (!still) requestAnimationFrame(tick);
+  })();
+</script>
 </body>
 </html>
