@@ -1,30 +1,56 @@
 import AgryCore
 import Foundation
+import Observation
 
-/// Owns all state: gathers records from the monitors, evaluates the policy,
-/// and drives the sleep assertion. Everything runs on the main actor.
+/// Owns all state: gathers records from the monitors, evaluates the policies,
+/// and drives the sleep assertion and lid guard. Everything runs on the main actor.
 @MainActor
+@Observable
 final class Controller {
     private(set) var store = RecordStore()
     private(set) var claudeSessions: [ClaudeSession] = []
     private(set) var decision = Decision.empty
+    private(set) var rows: [AgentRow] = []
+    private(set) var lidVerdict = LidVerdict.disarmed("lid-closed mode off")
+    private(set) var lidClosed = isLidClosed()
+    private(set) var thermal = ThermalLevel.nominal
+    private(set) var onAC = true
+    private(set) var batteryPercent: Int?
     private(set) var log: [String] = []
-    var forceRemote = false {
-        didSet { note("away mode \(forceRemote ? "on" : "off")"); evaluate() }
+    private(set) var lidInstalled = false
+    private(set) var rexConnected = false
+
+    var lidModeEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(lidModeEnabled, forKey: "lidClosedMode")
+            note("lid-closed mode \(lidModeEnabled ? "on" : "off")")
+            evaluate()
+        }
     }
 
-    let power = PowerMonitor()
-    let rex = RexMonitor()
-    private let claude = ClaudeSessionMonitor()
-    private let assertion = SleepAssertion()
-    private var policy = Policy(config: .defaults, isAlive: isProcessAlive)
-    private var deadlineTimer: Timer?
-    private var heartbeat: Timer?
+    @ObservationIgnored let power = PowerMonitor()
+    @ObservationIgnored let rex = RexMonitor()
+    @ObservationIgnored private let claude = ClaudeSessionMonitor()
+    @ObservationIgnored private let assertion = SleepAssertion()
+    @ObservationIgnored private let lid: LidGuard
+    @ObservationIgnored private var policy = Policy(config: .defaults, isAlive: isProcessAlive)
+    @ObservationIgnored private var deadlineTimer: Timer?
+    @ObservationIgnored private var heartbeat: Timer?
+    @ObservationIgnored private var lastStateText = ""
 
-    /// Called after every evaluation so the menu bar can refresh.
-    var onChange: (() -> Void)?
+    @ObservationIgnored let debugDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appending(path: "agry")
+    @ObservationIgnored let configURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appending(path: "agry/config.json")
 
     var remotePIDs: Set<Int32> { Set(claudeSessions.filter(\.isRemote).map(\.pid)) }
+    var hasManualHold: Bool { store.records[.manual] != nil }
+
+    init() {
+        lidModeEnabled = UserDefaults.standard.bool(forKey: "lidClosedMode")
+        lid = LidGuard(stateDirectory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appending(path: "agry"))
+    }
 
     func start() {
         power.onChange = { [weak self] onAC in
@@ -34,12 +60,22 @@ final class Controller {
         rex.onLog = { [weak self] line in self?.note(line) }
         rex.onUpdate = { [weak self] update in self?.apply(update) }
         claude.onChange = { [weak self] sessions in self?.apply(sessions) }
+        lid.onLog = { [weak self] line in self?.note(line) }
+        NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.note("thermal: \(ThermalLevel(ProcessInfo.processInfo.thermalState))")
+                self?.evaluate()
+            }
+        }
 
+        lid.recover()
         reloadConfig()
         power.start()
         claude.start()
         rex.start()
-        // Owner liveness and stuck records are checked on a slow heartbeat.
+        // Owner liveness, lid state and local input are sampled on a slow heartbeat.
         heartbeat = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.evaluate() }
         }
@@ -48,13 +84,11 @@ final class Controller {
 
     func stop() {
         rex.stop()
+        lid.set(armed: false)
         assertion.set(held: false, reason: "")
     }
 
     // MARK: Config
-
-    let configURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appending(path: "agry/config.json")
 
     /// Loads `config.json`, writing the defaults there first if it is missing.
     /// A malformed file is reported and the previous config is kept.
@@ -71,6 +105,21 @@ final class Controller {
             note("config error, keeping previous: \(error)")
         }
         evaluate()
+    }
+
+    // MARK: Lid-closed mode
+
+    func installLidSupport() async {
+        note("lid: installing sudoers rule")
+        let ok = await lid.install()
+        note("lid: install \(ok ? "succeeded" : "failed or cancelled")")
+        if ok { lidModeEnabled = true } else { evaluate() }
+    }
+
+    func uninstallLidSupport() async {
+        let ok = await lid.uninstall()
+        note("lid: uninstall \(ok ? "succeeded" : "failed or cancelled")")
+        lidModeEnabled = false
     }
 
     // MARK: Manual hold
@@ -90,13 +139,13 @@ final class Controller {
         evaluate()
     }
 
-    var hasManualHold: Bool { store.records[.manual] != nil }
-
     // MARK: Inputs
 
     private func apply(_ update: RexMonitor.Update) {
         let now = Date()
         switch update {
+        case .connected:
+            break
         case .status(let blockID, let status):
             store.apply(status.record(blockID: blockID, observedAt: now))
         case .removed(let blockID, let ids):
@@ -133,17 +182,29 @@ final class Controller {
 
     func evaluate() {
         let now = Date()
+        onAC = power.onAC
+        batteryPercent = power.batteryPercent
+        lidClosed = isLidClosed()
+        lidInstalled = lid.isInstalled
+        rexConnected = rex.isConnected
+        thermal = ThermalLevel(ProcessInfo.processInfo.thermalState)
+
         let next = policy.evaluate(PolicyInput(
-            records: store.merged(), onAC: power.onAC, remotePIDs: remotePIDs,
-            forceRemote: forceRemote, now: now))
+            records: store.merged(), onAC: onAC, remotePIDs: remotePIDs,
+            lastLocalInput: lastLocalInput(now: now), now: now))
         if next.isHolding != decision.isHolding {
             note(next.isHolding ? "holding: \(summary(of: next))" : "released")
         }
         decision = next
+        rows = AgentRow.build(next, sessions: claudeSessions)
         assertion.set(held: next.isHolding, reason: summary(of: next))
+
+        lidVerdict = LidPolicy.evaluate(next, LidContext(
+            enabled: lidModeEnabled && lidInstalled, onAC: onAC, batteryPercent: batteryPercent, thermal: thermal))
+        lid.set(armed: lidVerdict.isArmed)
+
         scheduleDeadline(next.nextDeadline)
         writeDebugState()
-        onChange?()
     }
 
     private func scheduleDeadline(_ deadline: Date?) {
@@ -168,16 +229,13 @@ final class Controller {
 
     // MARK: Debug
 
-    /// `state.txt` and `events.log` are rewritten as things change, so the
-    /// current picture is always one `cat` away.
-    let debugDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "agry")
-    private var lastStateText = ""
-
     func stateDescription() -> String {
         var lines = [
             "holding: \(decision.isHolding)  assertion: \(summary(of: decision))",
-            "onAC: \(power.onAC)  rex: \(rex.isConnected) \(rex.rexURL?.path ?? "-")",
-            "awayMode: \(forceRemote)  remotePIDs: \(remotePIDs.sorted())",
+            "onAC: \(onAC)  battery: \(batteryPercent.map { "\($0)%" } ?? "-")  thermal: \(thermal)  lidClosed: \(lidClosed)",
+            "lid: \(lidVerdict)  installed: \(lidInstalled)  armed: \(lid.isArmed)",
+            "rex: \(rexConnected) \(rex.rexURL?.path ?? "-")",
+            "remotePIDs: \(remotePIDs.sorted())",
             "nextDeadline: \(decision.nextDeadline.map { "\($0)" } ?? "-")",
             "records:",
         ]
@@ -194,13 +252,15 @@ final class Controller {
         return lines.joined(separator: "\n") + "\n"
     }
 
+    /// `state.txt` and `events.log` are rewritten as things change, so the
+    /// current picture is always one `cat` away.
     private func writeDebugState() {
-        // Times in the text change only when state changes, so this skips most writes.
         let text = stateDescription()
         guard text != lastStateText else { return }
         lastStateText = text
         try? FileManager.default.createDirectory(at: debugDirectory, withIntermediateDirectories: true)
-        try? text.write(to: debugDirectory.appending(path: "state.txt"), atomically: true, encoding: .utf8)
+        let body = text + "lastLocalInput: \(lastLocalInput())\n"
+        try? body.write(to: debugDirectory.appending(path: "state.txt"), atomically: true, encoding: .utf8)
         try? log.joined(separator: "\n").write(to: debugDirectory.appending(path: "events.log"), atomically: true, encoding: .utf8)
     }
 
@@ -210,5 +270,17 @@ final class Controller {
             timeZone: .current, calendar: .current))
         log.append("\(stamp) \(line)")
         if log.count > 500 { log.removeFirst(log.count - 500) }
+    }
+}
+
+extension ThermalLevel {
+    init(_ state: ProcessInfo.ThermalState) {
+        switch state {
+        case .nominal: self = .nominal
+        case .fair: self = .fair
+        case .serious: self = .serious
+        case .critical: self = .critical
+        @unknown default: self = .critical
+        }
     }
 }

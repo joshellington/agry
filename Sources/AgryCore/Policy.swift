@@ -4,17 +4,17 @@ import Foundation
 public struct PolicyInput: Sendable {
     public var records: [StatusRecord]
     public var onAC: Bool
-    /// Claude Code pids with remote control active.
+    /// Claude Code pids with remote control enabled.
     public var remotePIDs: Set<Int32>
-    /// "I'm away" toggle: treat every record as remote-controlled.
-    public var forceRemote: Bool
+    /// Last keyboard or mouse input on this Mac. nil means unknown (never away).
+    public var lastLocalInput: Date?
     public var now: Date
 
-    public init(records: [StatusRecord], onAC: Bool, remotePIDs: Set<Int32> = [], forceRemote: Bool = false, now: Date) {
+    public init(records: [StatusRecord], onAC: Bool, remotePIDs: Set<Int32> = [], lastLocalInput: Date? = nil, now: Date) {
         self.records = records
         self.onAC = onAC
         self.remotePIDs = remotePIDs
-        self.forceRemote = forceRemote
+        self.lastLocalInput = lastLocalInput
         self.now = now
     }
 }
@@ -53,7 +53,7 @@ public struct Policy: Sendable {
     }
 
     private func verdict(for record: StatusRecord, input: PolicyInput, timeouts: Timeouts) -> RecordVerdict {
-        let remote = input.forceRemote || isRemote(record, remotePIDs: input.remotePIDs)
+        let remote = isRemote(record, input: input)
 
         func hold(_ duration: TimeInterval, _ reason: String) -> RecordVerdict {
             let until = record.stateSince.addingTimeInterval(duration)
@@ -89,9 +89,13 @@ public struct Policy: Sendable {
         }
     }
 
-    private func isRemote(_ record: StatusRecord, remotePIDs: Set<Int32>) -> Bool {
-        if case .claudeSession(let pid) = record.source, remotePIDs.contains(pid) { return true }
-        if let pid = record.ownerPID, remotePIDs.contains(pid) { return true }
+    /// A record is remote when its session has remote control enabled and nobody
+    /// has touched this Mac since the record entered its state: the user left it
+    /// to finish and may answer from their phone. Local input means they saw it.
+    private func isRemote(_ record: StatusRecord, input: PolicyInput) -> Bool {
+        guard let lastInput = input.lastLocalInput, lastInput < record.stateSince else { return false }
+        if case .claudeSession(let pid) = record.source, input.remotePIDs.contains(pid) { return true }
+        if let pid = record.ownerPID, input.remotePIDs.contains(pid) { return true }
         return false
     }
 }

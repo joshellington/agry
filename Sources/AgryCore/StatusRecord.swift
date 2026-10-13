@@ -20,6 +20,8 @@ public struct StatusRecord: Equatable, Sendable {
     public var source: RecordSource
     public var state: ProgramState
     public var app: String?
+    /// Short label, e.g. a subagent's task name.
+    public var title: String?
     public var kind: String?
     public var message: String?
     public var ownerPID: Int32?
@@ -33,6 +35,7 @@ public struct StatusRecord: Equatable, Sendable {
         source: RecordSource,
         state: ProgramState,
         app: String? = nil,
+        title: String? = nil,
         kind: String? = nil,
         message: String? = nil,
         ownerPID: Int32? = nil,
@@ -42,6 +45,7 @@ public struct StatusRecord: Equatable, Sendable {
         self.source = source
         self.state = state
         self.app = app
+        self.title = title
         self.kind = kind
         self.message = message
         self.ownerPID = ownerPID

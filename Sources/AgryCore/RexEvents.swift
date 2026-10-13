@@ -5,6 +5,7 @@ public struct RexStatus: Equatable, Sendable {
     public var recordID: String
     public var state: ProgramState
     public var app: String?
+    public var title: String? = nil
     public var kind: String?
     public var message: String?
     public var ownerPID: Int32?
@@ -15,7 +16,7 @@ public struct RexStatus: Equatable, Sendable {
     public func record(blockID: String, observedAt now: Date) -> StatusRecord {
         StatusRecord(
             source: .rex(blockID: blockID, recordID: recordID),
-            state: state, app: app, kind: kind, message: message,
+            state: state, app: app, title: title, kind: kind, message: message,
             ownerPID: ownerPID, stateSince: min(updatedAt ?? now, now))
     }
 }
@@ -140,6 +141,7 @@ public enum RexParser {
         var state: String
         var app: String?
         var effective_app: String?
+        var title: String?
         var kind: String?
         var msg: String?
         var owner: Owner?
@@ -155,6 +157,7 @@ public enum RexParser {
                 recordID: recordID ?? id ?? "",
                 state: state,
                 app: effective_app ?? app,
+                title: title,
                 kind: kind,
                 message: msg,
                 ownerPID: owner?.pid,

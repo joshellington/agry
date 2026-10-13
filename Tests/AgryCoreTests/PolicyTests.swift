@@ -19,11 +19,12 @@ private func evaluate(
     at offset: TimeInterval,
     onAC: Bool = true,
     remotePIDs: Set<Int32> = [],
-    forceRemote: Bool = false,
+    lastInput: TimeInterval? = -60,
     alive: Bool = true
 ) -> Decision {
     Policy(isAlive: { _ in alive }).evaluate(PolicyInput(
-        records: records, onAC: onAC, remotePIDs: remotePIDs, forceRemote: forceRemote,
+        records: records, onAC: onAC, remotePIDs: remotePIDs,
+        lastLocalInput: lastInput.map { t0.addingTimeInterval($0) },
         now: t0.addingTimeInterval(offset)))
 }
 
@@ -87,8 +88,20 @@ private func evaluate(
         #expect(evaluate([r], at: 10 * minute, remotePIDs: [100]).isHolding)
     }
 
-    @Test func forceRemoteExtendsEveryRecord() {
-        #expect(evaluate([record(.done)], at: 30 * minute, forceRemote: true).isHolding)
+    @Test func localInputAfterStateCancelsRemoteExtension() {
+        #expect(!evaluate([record(.done)], at: 30 * minute, remotePIDs: [100], lastInput: 10).isHolding)
+    }
+
+    @Test func unknownLastInputIsNotRemote() {
+        #expect(!evaluate([record(.done)], at: 30 * minute, remotePIDs: [100], lastInput: nil).isHolding)
+    }
+
+    @Test func remoteNeedsRemoteControlEnabled() {
+        #expect(!evaluate([record(.done)], at: 30 * minute, remotePIDs: [7]).isHolding)
+    }
+
+    @Test func remoteIsReportedOnVerdict() {
+        #expect(evaluate([record(.blocked)], at: 1, remotePIDs: [100]).verdicts.first?.isRemote == true)
     }
 
     @Test func deadOwnerReleasesEvenWhenWorking() {

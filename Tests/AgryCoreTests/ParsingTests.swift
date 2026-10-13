@@ -46,6 +46,11 @@ private enum Fixture {
         #expect(status.recordID == "sub" && status.state == .blocked && status.kind == "question")
     }
 
+    @Test func recordTitle() {
+        let json = #"{"records":[{"id":"a47","state":"working","app":"claude-code","title":"Native playback engine"}]}"#
+        #expect(RexParser.snapshot(fromJSON: Data(json.utf8)).first?.title == "Native playback engine")
+    }
+
     @Test func statusRemoved() {
         #expect(RexParser.event(fromLine: Fixture.removed) == .statusRemoved(sessionID: "session:S", blockID: "block:B", recordIDs: ["sub"]))
     }

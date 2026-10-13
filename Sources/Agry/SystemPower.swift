@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import IOKit
 import IOKit.ps
 import IOKit.pwr_mgt
 
@@ -57,9 +59,27 @@ final class PowerMonitor {
 
     private func refresh() {
         let now = PowerMonitor.readOnAC()
+        batteryPercent = PowerMonitor.readBatteryPercent()
         guard now != onAC else { return }
         onAC = now
         onChange?(now)
+    }
+
+    private(set) var batteryPercent = PowerMonitor.readBatteryPercent()
+
+    static func readBatteryPercent() -> Int? {
+        guard let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+              let list = IOPSCopyPowerSourcesList(info)?.takeRetainedValue() as? [CFTypeRef]
+        else { return nil }
+        for source in list {
+            guard let description = IOPSGetPowerSourceDescription(info, source)?.takeUnretainedValue() as? [String: Any],
+                  description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType,
+                  let current = description[kIOPSCurrentCapacityKey] as? Int,
+                  let max = description[kIOPSMaxCapacityKey] as? Int, max > 0
+            else { continue }
+            return current * 100 / max
+        }
+        return nil
     }
 
     static func readOnAC() -> Bool {
@@ -72,4 +92,20 @@ final class PowerMonitor {
 
 func isProcessAlive(_ pid: Int32) -> Bool {
     kill(pid, 0) == 0 || errno == EPERM
+}
+
+/// When someone last touched the keyboard, mouse or trackpad. Needs no permission.
+func lastLocalInput(now: Date = Date()) -> Date {
+    let anyInput = CGEventType(rawValue: ~0)!
+    return now.addingTimeInterval(-CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: anyInput))
+}
+
+/// True when the built-in display's lid is closed.
+func isLidClosed() -> Bool {
+    let rootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+    guard rootDomain != 0 else { return false }
+    defer { IOObjectRelease(rootDomain) }
+    let value = IORegistryEntryCreateCFProperty(rootDomain, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?
+        .takeRetainedValue()
+    return (value as? Bool) ?? false
 }

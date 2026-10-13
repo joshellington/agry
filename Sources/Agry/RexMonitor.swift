@@ -6,6 +6,7 @@ import Foundation
 @MainActor
 final class RexMonitor {
     enum Update {
+        case connected
         case status(blockID: String, RexStatus)
         case removed(blockID: String, recordIDs: [String])
         case blockGone(blockID: String)
@@ -52,6 +53,7 @@ final class RexMonitor {
             isConnected = true
             retryDelay = 2
             onLog?("rex: connected")
+            onUpdate?(.connected)
         case .statusChanged(let sessionID, let blockID, let status):
             onLog?("rex: \(blockID.suffix(6)) \(status.recordID.isEmpty ? "" : status.recordID + " ")\(status.app ?? "?") \(status.state.rawValue)\(status.kind.map { "/\($0)" } ?? "")")
             sessionBlocks[sessionID, default: []].insert(blockID)
