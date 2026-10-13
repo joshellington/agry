@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agry</title>
+<meta name="description" content="A tiny macOS menu bar app that keeps your Mac awake while coding agents work.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 16'%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 10Q10 2 18.5 10Q10 18 1.5 10M10 4.4V1.6M5.9 5.3L4.7 2.9M14.1 5.3L15.3 2.9'/%3E%3C/g%3E%3Ccircle cx='10' cy='10' r='3' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0b0b0c;
+    --fg: rgba(255, 255, 255, 0.92);
+    --dim: rgba(255, 255, 255, 0.55);
+    --faint: rgba(255, 255, 255, 0.32);
+    --hairline: rgba(255, 255, 255, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body {
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  main { width: 100%; max-width: 360px; }
+  .eye { width: 40px; height: 32px; color: var(--fg); display: block; margin-bottom: 28px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; }
+  p { margin: 0 0 14px; color: var(--dim); }
+  .rule { height: 1px; background: var(--hairline); margin: 28px 0 16px; border: 0; }
+  footer { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--faint); }
+  a { color: var(--fg); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--faint); }
+</style>
+</head>
+<body>
+<main>
+  <svg class="eye" viewBox="0 0 20 16" aria-hidden="true">
+    <path d="M1.5 10Q10 2 18.5 10Q10 18 1.5 10M10 4.4V1.6M5.9 5.3L4.7 2.9M14.1 5.3L15.3 2.9"
+          fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="10" cy="10" r="3" fill="currentColor"/>
+  </svg>
+  <h1>agry</h1>
+  <p>A tiny macOS menu bar app that keeps your Mac awake while coding agents are working, blocked, or just finished. Then it lets it sleep.</p>
+  <p>Reads agent status from Rex and Claude Code. Optional lid‑closed mode.</p>
+  <hr class="rule">
+  <footer>
+    <span>Work in progress</span>
+    <a href="https://github.com/joshellington/agry">GitHub</a>
+  </footer>
+</main>
+</body>
+</html>

@@ -14,3 +14,9 @@ xcuserdata/
 
 # Private working notes
 IMPLEMENTATION_PLAN.md
+
+# Site
+node_modules/
+.wrangler/
+.cloudflare/
+.vscode/
