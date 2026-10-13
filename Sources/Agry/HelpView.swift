@@ -42,6 +42,21 @@ struct HelpView: View {
                             + "for replies from your phone. Touching the Mac cancels that.")
             }
 
+            HelpSection(title: "Lid closed") {
+                Text("macOS sleeps the moment you close the lid. With this on, agry asks it not to, but only when all of these hold:")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                RuleLine(symbol: "eye", text: "Something is keeping the Mac awake.")
+                RuleLine(symbol: "thermometer.medium", text: "The Mac isn't running hot.")
+                RuleLine(symbol: "powerplug.portrait",
+                         text: "It's plugged in, or on battery above \(LidPolicy.minimumBatteryPercent)% while you're away with remote control.")
+                Text("Otherwise the lid behaves normally. Setup adds one admin rule that allows only `pmset disablesleep`; remove it from the … menu.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Text("Timeouts live in config.json (… menu → Edit Config…).")
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
@@ -78,7 +93,7 @@ private struct LegendLine<Mark: View>: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            mark.frame(width: 26, alignment: .center)
+            mark.fixedSize().frame(width: 34, alignment: .center)
             (title.map { Text("\($0)  ").font(.system(size: 12, weight: .medium)) } ?? Text(""))
                 + Text(detail).font(.system(size: 11.5)).foregroundStyle(.secondary)
         }
@@ -110,6 +125,17 @@ private struct StateLine: View {
         LegendLine(title: title, detail: detail) {
             StatusMark(state: state)
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+        }
+    }
+}
+
+private struct RuleLine: View {
+    let symbol: String
+    let text: String
+
+    var body: some View {
+        LegendLine(title: nil, detail: text) {
+            Image(systemName: symbol).font(.system(size: 10.5)).foregroundStyle(.secondary)
         }
     }
 }

@@ -11,7 +11,7 @@ final class Controller {
     private(set) var claudeSessions: [ClaudeSession] = []
     private(set) var decision = Decision.empty
     private(set) var rows: [AgentRow] = []
-    private(set) var lidVerdict = LidVerdict.disarmed("lid-closed mode off")
+    private(set) var lidVerdict = LidVerdict.disarmed(.off)
     private(set) var lidClosed = isLidClosed()
     private(set) var thermal = ThermalLevel.nominal
     private(set) var onAC = true

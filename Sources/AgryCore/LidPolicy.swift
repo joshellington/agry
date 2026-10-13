@@ -27,8 +27,20 @@ public struct LidContext: Equatable, Sendable {
 }
 
 public enum LidVerdict: Equatable, Sendable {
+    /// Why lid-closed mode is not keeping the Mac awake right now.
+    public enum Reason: Equatable, Sendable {
+        /// The user turned the mode off (or it isn't set up).
+        case off
+        /// Nothing is holding the Mac awake, so there is nothing to protect.
+        case nothingToHold
+        case tooWarm
+        case lowBattery
+        /// On battery, lid-closed only applies while away with remote control.
+        case batteryNotRemote
+    }
+
     case armed
-    case disarmed(String)
+    case disarmed(Reason)
 
     public var isArmed: Bool { self == .armed }
 }
@@ -37,14 +49,14 @@ public enum LidPolicy {
     public static let minimumBatteryPercent = 25
 
     public static func evaluate(_ decision: Decision, _ context: LidContext) -> LidVerdict {
-        guard context.enabled else { return .disarmed("lid-closed mode off") }
-        guard decision.isHolding else { return .disarmed("nothing to hold") }
-        guard context.thermal < .serious else { return .disarmed("too warm") }
+        guard context.enabled else { return .disarmed(.off) }
+        guard decision.isHolding else { return .disarmed(.nothingToHold) }
+        guard context.thermal < .serious else { return .disarmed(.tooWarm) }
         if context.onAC { return .armed }
         if let percent = context.batteryPercent, percent < minimumBatteryPercent {
-            return .disarmed("battery below \(minimumBatteryPercent)%")
+            return .disarmed(.lowBattery)
         }
         let remoteHold = decision.verdicts.contains { $0.isRemote && $0.holdUntil != nil }
-        return remoteHold ? .armed : .disarmed("on battery, not remote")
+        return remoteHold ? .armed : .disarmed(.batteryNotRemote)
     }
 }

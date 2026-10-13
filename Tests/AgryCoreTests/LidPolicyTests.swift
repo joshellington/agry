@@ -21,15 +21,15 @@ private func context(enabled: Bool = true, onAC: Bool = true, battery: Int? = 80
     }
 
     @Test func disarmedWhenDisabled() {
-        #expect(!LidPolicy.evaluate(decision(holding: true), context(enabled: false)).isArmed)
+        #expect(LidPolicy.evaluate(decision(holding: true), context(enabled: false)) == .disarmed(.off))
     }
 
     @Test func disarmedWhenNotHolding() {
-        #expect(!LidPolicy.evaluate(decision(holding: false), context()).isArmed)
+        #expect(LidPolicy.evaluate(decision(holding: false), context()) == .disarmed(.nothingToHold))
     }
 
     @Test func disarmedWhenSeriouslyWarm() {
-        #expect(!LidPolicy.evaluate(decision(holding: true), context(thermal: .serious)).isArmed)
+        #expect(LidPolicy.evaluate(decision(holding: true), context(thermal: .serious)) == .disarmed(.tooWarm))
     }
 
     @Test func fairThermalStillArms() {
@@ -37,7 +37,7 @@ private func context(enabled: Bool = true, onAC: Bool = true, battery: Int? = 80
     }
 
     @Test func batteryWithoutRemoteDisarms() {
-        #expect(!LidPolicy.evaluate(decision(holding: true), context(onAC: false)).isArmed)
+        #expect(LidPolicy.evaluate(decision(holding: true), context(onAC: false)) == .disarmed(.batteryNotRemote))
     }
 
     @Test func batteryWithRemoteArms() {
@@ -45,6 +45,6 @@ private func context(enabled: Bool = true, onAC: Bool = true, battery: Int? = 80
     }
 
     @Test func lowBatteryDisarmsEvenWhenRemote() {
-        #expect(!LidPolicy.evaluate(decision(holding: true, remote: true), context(onAC: false, battery: 20)).isArmed)
+        #expect(LidPolicy.evaluate(decision(holding: true, remote: true), context(onAC: false, battery: 20)) == .disarmed(.lowBattery))
     }
 }

@@ -664,15 +664,22 @@ private struct LidRow: View {
     let controller: Controller
     @State private var installing = false
 
+    /// How the status line should read: plain, good to go, or held back for safety.
+    private enum Tone { case quiet, ready, caution }
+
     var body: some View {
+        let (status, tone) = statusLine
         HStack(alignment: .center, spacing: 9) {
             Image(systemName: "laptopcomputer")
                 .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(color(tone, fallback: .secondary))
                 .frame(width: 14)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 12))
-                Text(detail).font(.system(size: 11)).foregroundStyle(.tertiary)
+                Text(controller.lidInstalled ? "Lid closed" : "Stay awake with the lid closed")
+                    .font(.system(size: 12))
+                Text(status)
+                    .font(.system(size: 11))
+                    .foregroundStyle(color(tone, fallback: .tertiary))
             }
             Spacer()
             if controller.lidInstalled {
@@ -691,19 +698,32 @@ private struct LidRow: View {
                 .disabled(installing)
             }
         }
+        .help("Keeps the Mac awake when you close the lid, only while agents need it and it's safe. See ? for details.")
     }
 
-    private var title: String {
-        guard controller.lidInstalled else { return "Stay awake with the lid closed" }
-        guard controller.lidModeEnabled else { return "Lid closed: off" }
-        return controller.lidVerdict.isArmed ? "Lid closed: armed" : "Lid closed: standing by"
-    }
-
-    private var detail: String {
-        guard controller.lidInstalled else { return "Needs your password once" }
+    private var statusLine: (String, Tone) {
+        guard controller.lidInstalled else { return ("One-time setup, asks for your password", .quiet) }
         switch controller.lidVerdict {
-        case .armed: return controller.lidClosed ? "Lid is closed, still awake" : "Safe to close the lid"
-        case .disarmed(let reason): return reason.prefix(1).capitalized + reason.dropFirst()
+        case .armed:
+            return controller.lidClosed ? ("Closed, and staying awake", .ready) : ("Safe to close; agents keep running", .ready)
+        case .disarmed(.off):
+            return ("Off; closing the lid sleeps the Mac", .quiet)
+        case .disarmed(.nothingToHold):
+            return ("Ready when an agent is working", .quiet)
+        case .disarmed(.tooWarm):
+            return ("Paused while the Mac is hot", .caution)
+        case .disarmed(.lowBattery):
+            return ("Paused: battery below \(LidPolicy.minimumBatteryPercent)%", .caution)
+        case .disarmed(.batteryNotRemote):
+            return ("On battery: only while you're away", .quiet)
+        }
+    }
+
+    private func color(_ tone: Tone, fallback: HierarchicalShapeStyle) -> AnyShapeStyle {
+        switch tone {
+        case .quiet: AnyShapeStyle(fallback)
+        case .ready: AnyShapeStyle(.primary)
+        case .caution: AnyShapeStyle(Theme.amber)
         }
     }
 }
