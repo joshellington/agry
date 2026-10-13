@@ -6,14 +6,12 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
     public enum Origin: Equatable, Sendable {
         case rex(blockID: String)
         case claudeSession
-        case app
         case manual
 
         public var label: String {
             switch self {
             case .rex: "Rex · OSC 7501"
             case .claudeSession: "Claude session file"
-            case .app: "App sleep assertion"
             case .manual: "Manual hold"
             }
         }
@@ -79,7 +77,7 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
                 origin: origin(record.source),
                 state: record.state,
                 kind: record.kind,
-                message: detailMessage(record),
+                message: record.message ?? record.title,
                 since: record.stateSince,
                 pid: record.ownerPID,
                 cwd: session?.cwd,
@@ -106,7 +104,6 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
         switch source {
         case .rex(let blockID, _): "rex:\(blockID)"
         case .claudeSession(let pid): "claude:\(pid)"
-        case .app(let pid): "app:\(pid)"
         case .manual: "manual"
         }
     }
@@ -115,7 +112,6 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
         switch source {
         case .rex(let blockID, _): .rex(blockID: blockID)
         case .claudeSession: .claudeSession
-        case .app: .app
         case .manual: .manual
         }
     }
@@ -123,12 +119,6 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
     private static func isRoot(_ source: RecordSource) -> Bool {
         if case .rex(_, let recordID) = source { return recordID.isEmpty }
         return true
-    }
-
-    /// An app row is already named by its title, so it has no separate message.
-    private static func detailMessage(_ record: StatusRecord) -> String? {
-        if case .app = record.source { return record.message }
-        return record.message ?? record.title
     }
 
     private static func displayName(_ record: StatusRecord, session: ClaudeSession?) -> String {

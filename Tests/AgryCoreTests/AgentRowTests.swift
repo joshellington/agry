@@ -85,11 +85,6 @@ private func rows(_ verdicts: [RecordVerdict], sessions: [ClaudeSession] = []) -
         #expect(rows([verdict(.rex(blockID: "b", recordID: ""), .working)])[0].origin == .rex(blockID: "b"))
     }
 
-    @Test func appRowIsNamedAfterApp() {
-        let result = rows([verdict(.app(pid: 9), .working, pid: 9, title: "Claude")])
-        #expect(result[0].name == "Claude" && result[0].origin == .app && result[0].message == nil)
-    }
-
     @Test func blockedRowWithWorkingChildHoldsForWork() {
         let result = rows([
             verdict(.rex(blockID: "b", recordID: ""), .blocked),

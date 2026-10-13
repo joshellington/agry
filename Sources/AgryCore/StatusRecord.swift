@@ -11,8 +11,6 @@ public enum RecordSource: Hashable, Sendable {
     case rex(blockID: String, recordID: String)
     /// A Claude Code session file, keyed by process id.
     case claudeSession(pid: Int32)
-    /// An app's own sleep assertion (e.g. Claude desktop), keyed by process id.
-    case app(pid: Int32)
     /// A manual hold from the menu.
     case manual
 }
