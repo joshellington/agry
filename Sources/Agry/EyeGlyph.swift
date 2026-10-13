@@ -13,8 +13,9 @@ enum EyeGlyph {
         case resting
     }
 
-    /// The pupil turns this color when an agent needs the user.
-    static let attentionColor = NSColor.systemOrange
+    /// Sodium-lamp amber: the pupil's color when an agent needs the user, and
+    /// the panel's "needs you" color (Theme.amber).
+    static let attentionColor = NSColor(red: 1.0, green: 0.69, blue: 0.13, alpha: 1)
 
     /// Outline strokes in a 20×16 design space (y down). Lashes point up when
     /// wide awake and down when resting.

@@ -53,10 +53,11 @@ extension Controller {
 private func renderSnapshot(controller: Controller, to url: URL) {
     for scheme in [ColorScheme.light, .dark] {
         let navigation = PanelNavigation()
+        navigation.keepAwakeOpen = ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_DRAWER"] != nil
         navigation.selected = ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_EXPAND"]
             .flatMap { prefix in controller.rows.first { $0.name.hasPrefix(prefix) }?.id }
         let view = PanelView(controller: controller, navigation: navigation, allowsScrolling: false)
-            .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.96))
+            .background(Color(white: 0.11))
             .environment(\.colorScheme, scheme)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
@@ -68,7 +69,7 @@ private func renderSnapshot(controller: Controller, to url: URL) {
     }
     for scheme in [ColorScheme.light, .dark] {
         let help = HelpView(config: controller.config, onAC: controller.onAC)
-            .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.96))
+            .background(Color(white: 0.11))
             .environment(\.colorScheme, scheme)
         let renderer = ImageRenderer(content: help)
         renderer.scale = 2

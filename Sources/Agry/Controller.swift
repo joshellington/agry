@@ -307,6 +307,12 @@ final class Controller {
         try? log.joined(separator: "\n").write(to: debugDirectory.appending(path: "events.log"), atomically: true, encoding: .utf8)
     }
 
+    /// Writes the event log now, for notes made outside an evaluation.
+    func flushDebugLog() {
+        try? FileManager.default.createDirectory(at: debugDirectory, withIntermediateDirectories: true)
+        try? log.joined(separator: "\n").write(to: debugDirectory.appending(path: "events.log"), atomically: true, encoding: .utf8)
+    }
+
     func note(_ line: String) {
         let stamp = Date().formatted(Date.VerbatimFormatStyle(
             format: "\(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits)",

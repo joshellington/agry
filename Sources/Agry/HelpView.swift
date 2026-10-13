@@ -1,7 +1,7 @@
 import AgryCore
 import SwiftUI
 
-/// The ⓘ pop-out: a legend for the glyph, state colors, badges and lid modes.
+/// The help pop-out: a legend for the eye, the state marks and the time tags.
 /// Timeouts come from the live config and the current power source.
 struct HelpView: View {
     let config: PolicyConfig
@@ -11,50 +11,44 @@ struct HelpView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("How agry works").font(.system(size: 14, weight: .semibold))
                 Text("Keeps your Mac awake while agents work, and a little after, so results and questions wait for you.")
-                    .font(.system(size: 11))
+                    .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
             HelpSection(title: "The eye") {
-                GlyphLine(mood: .awake, title: "Awake", detail: "Something is holding the Mac awake.")
-                GlyphLine(mood: .attention, title: "Watching you", detail: "An agent is blocked and needs you.")
+                GlyphLine(mood: .awake, title: "Awake", detail: "Something is keeping the Mac awake.")
+                GlyphLine(mood: .attention, title: "Needs you", detail: "An agent is blocked, waiting on you.")
                 GlyphLine(mood: .resting, title: "Resting", detail: "Nothing holding. Sleep works as usual.")
             }
 
-            HelpSection(title: "States · \(onAC ? "on AC" : "on battery")") {
-                StateLine(state: .working, title: "Working", detail: "Holds while running (up to \(format(timeouts.workingCap))).")
+            HelpSection(title: "Agents (\(onAC ? "on AC" : "on battery"))") {
+                StateLine(state: .working, title: "Working", detail: "Holds while running, up to \(format(timeouts.workingCap)).")
                 StateLine(state: .blocked, title: "Needs you", detail: "Waiting on permission or an answer. Holds \(format(timeouts.blocked)).")
-                StateLine(state: .done, title: "Done", detail: "Finished, unread. Holds \(format(timeouts.finished)).")
+                StateLine(state: .done, title: "Done", detail: "Finished. Holds \(format(timeouts.finished)) so you can catch up.")
                 StateLine(state: .error, title: "Error", detail: "Failed and stopped. Holds \(format(timeouts.finished)).")
                 StateLine(state: .idle, title: "Idle", detail: "At rest. Doesn't hold.")
             }
 
-            HelpSection(title: "Badges") {
-                BadgeLine(badge: Text("live"), detail: "Holding for as long as the agent works.")
-                BadgeLine(badge: Text("12m"), detail: "Time left before this agent lets go.")
-                BadgeLine(badge: Image(systemName: "dot.radiowaves.left.and.right").foregroundStyle(Theme.accent),
-                          detail: "Away mode: remote control is on and you haven't touched the Mac since it "
-                            + "finished, so it holds at least \(format(timeouts.remote)) for replies from your phone. "
-                            + "Touching the Mac cancels it.")
+            HelpSection(title: "Times") {
+                MarkLine(mark: Text("12m").monospacedDigit(), detail: "How long it has been working.")
+                MarkLine(mark: HStack(spacing: 3) { Image(systemName: "zzz").font(.system(size: 8, weight: .semibold)); Text("4m") },
+                         detail: "Until it lets the Mac sleep.")
+                MarkLine(mark: Image(systemName: "dot.radiowaves.left.and.right"),
+                         detail: "You're away and remote control is on, so it holds at least \(format(timeouts.remote)) "
+                            + "for replies from your phone. Touching the Mac cancels that.")
             }
 
-            HelpSection(title: "Lid closed") {
-                LidLine(title: "Armed", detail: "Safe to close the lid. The Mac stays awake.")
-                LidLine(title: "Standing by", detail: "Not armed right now: nothing to hold, too warm, low battery, "
-                    + "or on battery without remote work.")
-            }
-
-            Text("Timeouts live in config.json: settings menu → Edit Config…")
-                .font(.system(size: 10.5))
+            Text("Timeouts live in config.json (… menu → Edit Config…).")
+                .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
         }
         .padding(16)
         .frame(width: 300)
-        .tint(Theme.accent)
+        .environment(\.colorScheme, .dark)
     }
 
     private func format(_ seconds: TimeInterval) -> String {
@@ -70,13 +64,13 @@ private struct HelpSection<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            SectionLabel(text: title)
+            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(.tertiary)
             content
         }
     }
 }
 
-/// A legend line: a fixed-width leading mark, a title and one line of detail.
+/// A legend line: a fixed-width leading mark, a title and its explanation.
 private struct LegendLine<Mark: View>: View {
     let title: String?
     let detail: String
@@ -85,8 +79,8 @@ private struct LegendLine<Mark: View>: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             mark.frame(width: 26, alignment: .center)
-            (title.map { Text("\($0)  ").font(.system(size: 11.5, weight: .medium)) } ?? Text(""))
-                + Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+            (title.map { Text("\($0)  ").font(.system(size: 12, weight: .medium)) } ?? Text(""))
+                + Text(detail).font(.system(size: 11.5)).foregroundStyle(.secondary)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -101,7 +95,7 @@ private struct GlyphLine: View {
         LegendLine(title: title, detail: detail) {
             EyeGlyphView(mood: mood, lineWidth: 1.5)
                 .frame(width: 20)
-                .foregroundStyle(mood == .resting ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.accent))
+                .foregroundStyle(mood == .resting ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
         }
     }
@@ -114,30 +108,19 @@ private struct StateLine: View {
 
     var body: some View {
         LegendLine(title: title, detail: detail) {
-            StateDot(state: state, active: state != .idle)
+            StatusMark(state: state)
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
         }
     }
 }
 
-private struct BadgeLine<Badge: View>: View {
-    let badge: Badge
+private struct MarkLine<Mark: View>: View {
+    let mark: Mark
     let detail: String
 
     var body: some View {
         LegendLine(title: nil, detail: detail) {
-            badge.font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct LidLine: View {
-    let title: String
-    let detail: String
-
-    var body: some View {
-        LegendLine(title: title, detail: detail) {
-            Image(systemName: "laptopcomputer").font(.system(size: 11)).foregroundStyle(.secondary)
+            mark.font(.system(size: 11)).foregroundStyle(.tertiary)
         }
     }
 }

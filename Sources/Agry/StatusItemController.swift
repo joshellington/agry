@@ -8,6 +8,7 @@ import SwiftUI
 @Observable
 final class PanelNavigation {
     var selected: String?
+    var keepAwakeOpen = false
 }
 
 /// The menu bar icon and its panel.
@@ -36,7 +37,7 @@ final class StatusItemController: NSObject {
         hosting.onFittingSizeChange = { [weak self] in self?.fitPanel() }
 
         let background = NSVisualEffectView()
-        background.material = .popover
+        background.material = .hudWindow
         background.state = .active
         background.blendingMode = .behindWindow
         background.wantsLayer = true
@@ -50,6 +51,8 @@ final class StatusItemController: NSObject {
             hosting.topAnchor.constraint(equalTo: background.topAnchor),
         ])
         panel.contentView = background
+        // The panel is always dark ("nocturnal"), whatever the system appearance.
+        panel.appearance = NSAppearance(named: .darkAqua)
 
         if let button = statusItem.button {
             button.target = self
@@ -76,6 +79,8 @@ final class StatusItemController: NSObject {
     var isOpen: Bool { panel.isVisible }
 
     @objc func togglePanel() {
+        controller.note("panel: icon clicked, \(isOpen ? "closing" : "opening")")
+        controller.flushDebugLog()
         isOpen ? closePanel() : openPanel()
     }
 
@@ -86,7 +91,17 @@ final class StatusItemController: NSObject {
         panel.makeKey()
         statusItem.button?.highlight(true)
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.closePanel() }
+            MainActor.assumeIsolated {
+                // The status item is drawn by another process on recent macOS,
+                // so a click on it arrives here too. Leave that click to the
+                // button's own toggle, or the panel closes and instantly reopens.
+                guard let self else { return }
+                let point = NSEvent.mouseLocation
+                let onIcon = self.iconFrameContains(point)
+                self.controller.note("panel: outside click at \(point) icon=\(self.iconFrame.map { "\($0)" } ?? "-") \(onIcon ? "ignored (icon)" : "closing")")
+                self.controller.flushDebugLog()
+                if !onIcon { self.closePanel() }
+            }
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == 53 else { return event } // Esc
@@ -99,10 +114,20 @@ final class StatusItemController: NSObject {
         panel.orderOut(nil)
         statusItem.button?.highlight(false)
         navigation.selected = nil
+        navigation.keepAwakeOpen = false
         if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         outsideClickMonitor = nil
         keyMonitor = nil
+    }
+
+    private var iconFrame: NSRect? {
+        guard let button = statusItem.button, let window = button.window else { return nil }
+        return window.convertToScreen(button.convert(button.bounds, to: nil))
+    }
+
+    private func iconFrameContains(_ point: NSPoint) -> Bool {
+        iconFrame?.insetBy(dx: -2, dy: -2).contains(point) ?? false
     }
 
     /// Sizes the panel to its content and pins its top edge under the icon.
