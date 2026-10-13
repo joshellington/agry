@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Also right when launched as a bare executable (no LSUIElement).
         NSApp.setActivationPolicy(.accessory)
         controller.start()
+        if let minutes = ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_HOLD"].flatMap(Double.init) {
+            controller.holdManually(for: minutes * 60)
+        }
         if let path = ProcessInfo.processInfo.environment["AGRY_SNAPSHOT"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [controller] in
                 MainActor.assumeIsolated { renderSnapshot(controller: controller, to: URL(fileURLWithPath: path)) }
@@ -57,7 +60,7 @@ extension Controller {
 private func renderSnapshot(controller: Controller, to url: URL) {
     for scheme in [ColorScheme.light, .dark] {
         let view = PanelView(controller: controller,
-                             initiallyExpanded: ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_EXPAND"]
+                             selected: ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_EXPAND"]
                                  .flatMap { prefix in controller.rows.first { $0.name.hasPrefix(prefix) }?.id },
                              allowsScrolling: false)
             .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.96))

@@ -56,6 +56,7 @@ final class Controller {
     func start() {
         power.onChange = { [weak self] onAC in
             self?.note("power: \(onAC ? "AC" : "battery")")
+            self?.capManualHoldForPower()
             self?.evaluate()
         }
         rex.onLog = { [weak self] line in self?.note(line) }
@@ -125,13 +126,38 @@ final class Controller {
 
     // MARK: Manual hold
 
+    /// The active manual hold's start and end, if any.
+    var manualHold: (since: Date, until: Date)? {
+        guard let record = store.records[.manual], let until = record.expiresAt, until > Date() else { return nil }
+        return (record.stateSince, until)
+    }
+
     func holdManually(for duration: TimeInterval?) {
         let now = Date()
-        let expiry = duration.map { now.addingTimeInterval($0) } ?? .distantFuture
+        let requested = duration.map { now.addingTimeInterval($0) } ?? .distantFuture
+        let expiry = ManualHold.expiry(requested, onAC: power.onAC, now: now)
         store.remove(.manual)
         store.apply(StatusRecord(source: .manual, state: .working, app: "manual", stateSince: now, expiresAt: expiry))
         note("manual hold until \(duration == nil ? "turned off" : expiry.formatted(date: .omitted, time: .shortened))")
         evaluate()
+    }
+
+    func extendManualHold(by extra: TimeInterval) {
+        guard var record = store.records[.manual], let expiry = record.expiresAt else { return }
+        record.expiresAt = ManualHold.extended(expiry, by: extra, now: Date())
+        store.apply(record)
+        note("manual hold extended to \(record.expiresAt!.formatted(date: .omitted, time: .shortened))")
+        evaluate()
+    }
+
+    /// On battery an open-ended manual hold becomes a timed one.
+    private func capManualHoldForPower() {
+        guard var record = store.records[.manual], let expiry = record.expiresAt else { return }
+        let capped = ManualHold.expiry(expiry, onAC: power.onAC, now: Date())
+        guard capped != expiry else { return }
+        record.expiresAt = capped
+        store.apply(record)
+        note("on battery: manual hold capped to \(capped.formatted(date: .omitted, time: .shortened))")
     }
 
     func cancelManualHold() {
@@ -150,9 +176,9 @@ final class Controller {
         evaluate()
     }
 
-    func showInRex(_ row: AgentRow) {
-        guard case .rex(let blockID) = row.origin else { return }
-        Task { await rex.show(blockID: blockID) }
+    func showInRex(_ row: AgentRow) async -> RexMonitor.ShowOutcome {
+        guard case .rex(let blockID) = row.origin else { return .unavailable }
+        return await rex.show(blockID: blockID)
     }
 
     // MARK: Inputs

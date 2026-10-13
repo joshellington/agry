@@ -26,6 +26,14 @@ enum Theme {
         return minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h\(String(format: "%02d", minutes % 60))"
     }
 
+    /// Spoken-style duration for the stay-awake picker: "45m", "1h 30m", "∞".
+    static func longDuration(_ seconds: TimeInterval?) -> String {
+        guard let seconds else { return "∞" }
+        let minutes = Int(seconds / 60)
+        if minutes < 60 { return "\(minutes)m" }
+        return minutes % 60 == 0 ? "\(minutes / 60)h" : "\(minutes / 60)h \(minutes % 60)m"
+    }
+
     static func label(_ state: ProgramState, kind: String?) -> String {
         switch state {
         case .blocked: kind.map { "needs \($0)" } ?? "blocked"
@@ -36,7 +44,8 @@ enum Theme {
 
 struct PanelView: View {
     let controller: Controller
-    var initiallyExpanded: String?
+    /// The agent whose details are showing, if any (a drill-in page).
+    @State var selected: String?
     /// Snapshots cannot render ScrollView, so they lay every row out flat.
     var allowsScrolling = true
 
@@ -47,11 +56,25 @@ struct PanelView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 12)
             Divider().opacity(0.5)
-            AgentsSection(controller: controller, allowsScrolling: allowsScrolling, expanded: initiallyExpanded)
-                .padding(.vertical, 10)
+            Group {
+                if let row = selectedRow {
+                    AgentDetailPage(row: row, controller: controller) { navigate(to: nil) }
+                        .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .trailing)).combined(with: .opacity))
+                } else {
+                    AgentList(controller: controller, allowsScrolling: allowsScrolling) { navigate(to: $0) }
+                        .transition(.asymmetric(insertion: .move(edge: .leading), removal: .move(edge: .leading)).combined(with: .opacity))
+                }
+            }
+            .padding(.vertical, 10)
+            .clipped()
             Divider().opacity(0.5)
-            ControlsSection(controller: controller)
-                .padding(16)
+            StayAwakeSection(controller: controller)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
+            LidSection(controller: controller)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
             Divider().opacity(0.5)
             FooterView(controller: controller)
                 .padding(.horizontal, 12)
@@ -59,6 +82,15 @@ struct PanelView: View {
         }
         .frame(width: Theme.width)
         .tint(Theme.accent)
+    }
+
+    /// Falls back to the list when the selected agent goes away.
+    private var selectedRow: AgentRow? {
+        selected.flatMap { id in controller.rows.first { $0.id == id } }
+    }
+
+    private func navigate(to id: String?) {
+        withAnimation(.snappy(duration: 0.25)) { selected = id }
     }
 }
 
@@ -165,16 +197,15 @@ struct SectionLabel: View {
     }
 }
 
-private struct AgentsSection: View {
+private struct AgentList: View {
     let controller: Controller
     let allowsScrolling: Bool
-    /// The one expanded row, if any. Clicking a row toggles it.
-    @State var expanded: String?
+    let open: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             SectionLabel(text: "Agents").padding(.horizontal, 16)
-            if controller.rows.isEmpty {
+            if controller.rows.allSatisfy(\.isManual) {
                 Text(controller.rexConnected ? "No programs reporting status." : "Waiting for Rex…")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -183,20 +214,17 @@ private struct AgentsSection: View {
             } else {
                 // Countdown text refreshes on a slow tick, only while the panel is open.
                 TimelineView(.periodic(from: .now, by: 15)) { context in
-                    let list = VStack(spacing: 2) {
-                        ForEach(controller.rows) { row in
-                            AgentRowView(row: row, now: context.date, controller: controller,
-                                         isExpanded: expanded == row.id) {
-                                withAnimation(.snappy(duration: 0.22)) {
-                                    expanded = expanded == row.id ? nil : row.id
-                                }
-                            }
+                    let list = VStack(spacing: 0) {
+                        // A manual hold is shown in the Stay awake section instead.
+                        ForEach(controller.rows.filter { !$0.isManual }) { row in
+                            AgentRowView(row: row, now: context.date) { open(row.id) }
                         }
                     }
                     .padding(.horizontal, 6)
-                    // Scroll only when the list would make the panel unwieldy.
-                    if allowsScrolling && (controller.rows.count > 6 || expanded != nil && controller.rows.count > 3) {
-                        ScrollView { list }.frame(height: 360)
+                    if allowsScrolling && controller.rows.count > 7 {
+                        ScrollView { list }
+                            .scrollBounceBehavior(.basedOnSize)
+                            .frame(height: 330)
                     } else {
                         list
                     }
@@ -209,36 +237,10 @@ private struct AgentsSection: View {
 private struct AgentRowView: View {
     let row: AgentRow
     let now: Date
-    let controller: Controller
-    let isExpanded: Bool
-    let toggle: () -> Void
+    let open: () -> Void
     @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            summary
-                .contentShape(Rectangle())
-                .onTapGesture(perform: toggle)
-            if isExpanded {
-                AgentDetailView(row: row, now: now, controller: controller)
-                    .padding(.leading, 17)
-                    .padding(.top, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 9).fill(background))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(isExpanded ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)))
-        .onHover { hovering = $0 }
-    }
-
-    private var background: AnyShapeStyle {
-        if isExpanded { return AnyShapeStyle(.quaternary.opacity(0.45)) }
-        return hovering ? AnyShapeStyle(.quaternary.opacity(0.7)) : AnyShapeStyle(.clear)
-    }
-
-    private var summary: some View {
         HStack(alignment: .top, spacing: 10) {
             StateDot(state: row.state, active: row.holdUntil != nil)
                 .padding(.top, 4)
@@ -247,27 +249,20 @@ private struct AgentRowView: View {
                     Text(row.name)
                         .font(.system(size: 13, weight: .medium))
                         .lineLimit(1)
-                    if row.isRemote {
-                        Image(systemName: "dot.radiowaves.left.and.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
-                            .help("Away with remote control on: holding longer so you can reply from your phone")
-                    }
+                    if row.isRemote { RemoteMark() }
                     Spacer(minLength: 4)
                     HoldBadge(row: row, now: now)
-                    Image(systemName: "chevron.down")
+                    Image(systemName: "chevron.right")
                         .font(.system(size: 8.5, weight: .semibold))
                         .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
-                        .opacity(hovering || isExpanded ? 1 : 0)
+                        .opacity(hovering ? 1 : 0)
                 }
-                Text(detail)
+                Text(row.summaryLine)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .lineLimit(isExpanded ? 6 : 1)
+                    .lineLimit(1)
                     .truncationMode(.tail)
-                    .fixedSize(horizontal: false, vertical: isExpanded)
-                if !row.children.isEmpty && !isExpanded {
+                if !row.children.isEmpty {
                     Text("↳ \(row.children.count == 1 ? row.children[0].title : "\(row.children.count) subagents")")
                         .font(.system(size: 10.5))
                         .foregroundStyle(.tertiary)
@@ -275,65 +270,131 @@ private struct AgentRowView: View {
                 }
             }
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? AnyShapeStyle(.quaternary.opacity(0.7)) : AnyShapeStyle(.clear)))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: open)
+        .onHover { hovering = $0 }
     }
+}
 
-    private var detail: String {
-        var parts = [Theme.label(row.state, kind: row.kind)]
-        if let message = row.message, !message.isEmpty { parts.append(message) }
+private struct RemoteMark: View {
+    var body: some View {
+        Image(systemName: "dot.radiowaves.left.and.right")
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(Theme.accent)
+            .help("Away with remote control on: holding longer so you can reply from your phone")
+    }
+}
+
+extension AgentRow {
+    var summaryLine: String {
+        var parts = [Theme.label(state, kind: kind)]
+        if let message, !message.isEmpty { parts.append(message) }
         return parts.joined(separator: " · ")
     }
 }
 
-/// The expanded part of a row: facts on the left in a small grid, subagents,
-/// then actions.
-private struct AgentDetailView: View {
+/// One agent's details, shown in place of the list with a back button.
+private struct AgentDetailPage: View {
     let row: AgentRow
-    let now: Date
     let controller: Controller
+    let back: () -> Void
     @State private var copied = false
+    @State private var showOutcome: RexMonitor.ShowOutcome?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 5) {
-                fact("State", "\(Theme.label(row.state, kind: row.kind)) · for \(Theme.duration(row.since, now))")
-                fact("Holding", holding)
-                fact("Remote", remote)
-                if let cwd = row.cwd { fact("Project", (cwd as NSString).abbreviatingWithTildeInPath) }
-                fact("Source", [row.origin.label, row.pid.map { "pid \($0)" }].compactMap { $0 }.joined(separator: " · "))
-            }
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            let now = context.date
+            VStack(alignment: .leading, spacing: 12) {
+                Button(action: back) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left").font(.system(size: 9, weight: .bold))
+                        Text("AGENTS").font(.system(size: 9.5, weight: .semibold, design: .monospaced)).tracking(1.4)
+                    }
+                    .foregroundStyle(Theme.accent)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
 
-            if !row.children.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    SectionLabel(text: "Subagents")
-                    ForEach(row.children) { child in
-                        HStack(spacing: 8) {
-                            StateDot(state: child.state, active: child.holdUntil != nil)
-                            Text(child.title).font(.system(size: 11)).lineLimit(1)
-                            Spacer(minLength: 4)
-                            Text(Theme.label(child.state, kind: nil))
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.tertiary)
+                HStack(alignment: .center, spacing: 10) {
+                    StateDot(state: row.state, active: row.holdUntil != nil)
+                    Text(row.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
+                    if row.isRemote { RemoteMark() }
+                    Spacer(minLength: 4)
+                    HoldBadge(row: row, now: now)
+                }
+
+                if let message = row.message, !message.isEmpty {
+                    Text(message)
+                        .font(.system(size: 11.5))
+                        .lineLimit(8)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)))
+                }
+
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 6) {
+                    fact("State", "\(Theme.label(row.state, kind: row.kind)) · for \(Theme.duration(row.since, now))")
+                    fact("Holding", holding(now))
+                    fact("Remote", remote)
+                    if let cwd = row.cwd { fact("Project", (cwd as NSString).abbreviatingWithTildeInPath) }
+                    fact("Source", [row.origin.label, row.pid.map { "pid \($0)" }].compactMap { $0 }.joined(separator: " · "))
+                }
+
+                if !row.children.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        SectionLabel(text: "Subagents")
+                        ForEach(row.children) { child in
+                            HStack(spacing: 8) {
+                                StateDot(state: child.state, active: child.holdUntil != nil)
+                                Text(child.title).font(.system(size: 11.5)).lineLimit(1)
+                                Spacer(minLength: 4)
+                                Text(Theme.label(child.state, kind: nil))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                 }
-            }
 
-            HStack(spacing: 6) {
-                if case .rex = row.origin {
-                    PillButton(title: "Show in Rex", compact: true) { controller.showInRex(row) }
+                HStack(spacing: 6) {
+                    if case .rex = row.origin {
+                        PillButton(title: "Show in Rex", compact: true) {
+                            Task { showOutcome = await controller.showInRex(row) }
+                        }
+                    }
+                    if row.holdUntil != nil {
+                        PillButton(title: row.isManual ? "Stop hold" : "Let it sleep", compact: true) { controller.dismiss(row) }
+                            .help("Stop this agent holding the Mac awake until its state changes")
+                    }
+                    PillButton(title: copied ? "Copied" : "Copy", compact: true) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(copyText(now), forType: .string)
+                        copied = true
+                    }
                 }
-                if row.holdUntil != nil {
-                    PillButton(title: row.isManual ? "Cancel hold" : "Let it sleep", compact: true) { controller.dismiss(row) }
-                        .help("Stop this agent holding the Mac awake until its state changes")
-                }
-                PillButton(title: copied ? "Copied" : "Copy", compact: true) {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(copyText, forType: .string)
-                    copied = true
+
+                if showOutcome == .needsRemoteControl {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "info.circle").font(.system(size: 10))
+                        Text("Rex focused the pane, but switching sessions needs Remote Control on in Rex.")
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Open Rex Settings") { RexMonitor.openRemoteControlSettings() }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.accent)
+                    }
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                } else if showOutcome == .unavailable {
+                    Text("Couldn't reach the Rex app.").font(.system(size: 10.5)).foregroundStyle(.secondary)
                 }
             }
+            .padding(.horizontal, 16)
         }
-        .font(.system(size: 11))
     }
 
     private func fact(_ key: String, _ value: String) -> some View {
@@ -342,7 +403,6 @@ private struct AgentDetailView: View {
                 .font(.system(size: 9, weight: .semibold, design: .monospaced))
                 .tracking(1)
                 .foregroundStyle(.tertiary)
-                .gridColumnAlignment(.leading)
             Text(value)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -351,10 +411,10 @@ private struct AgentDetailView: View {
         }
     }
 
-    private var holding: String {
+    private func holding(_ now: Date) -> String {
         if row.isDismissed { return "No · you let it sleep" }
         guard let until = row.holdUntil else { return "No · \(row.reason)" }
-        if until == .distantFuture { return "Until you turn it off" }
+        if until == .distantFuture { return "Until you stop it" }
         if row.isHoldingForWork {
             let who = row.state == .working ? "" : "subagents "
             return "While \(who)working (cap at \(until.formatted(date: .omitted, time: .shortened)))"
@@ -368,10 +428,10 @@ private struct AgentDetailView: View {
         return "On · you're here, normal timeouts"
     }
 
-    private var copyText: String {
+    private func copyText(_ now: Date) -> String {
         var lines = ["\(row.name) — \(Theme.label(row.state, kind: row.kind))"]
         if let message = row.message { lines.append(message) }
-        lines.append("holding: \(holding)")
+        lines.append("holding: \(holding(now))")
         lines.append("remote: \(remote)")
         if let cwd = row.cwd { lines.append("project: \(cwd)") }
         lines.append("source: \(row.origin.label)\(row.pid.map { " pid \($0)" } ?? "")")
@@ -424,72 +484,185 @@ private struct HoldBadge: View {
     }
 }
 
-// MARK: Controls
+// MARK: Stay awake
 
-private struct ControlsSection: View {
+/// Pick a duration on a stepped slider and start; while a hold runs, the
+/// section turns into a countdown with extend and stop.
+private struct StayAwakeSection: View {
     let controller: Controller
-    @State private var installing = false
+    @AppStorage("manualHoldStop") private var storedIndex = 3
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    SectionLabel(text: "Stay awake")
-                    Spacer()
-                    if controller.hasManualHold {
-                        Button("Cancel") { controller.cancelManualHold() }
-                            .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Theme.accent)
-                    }
-                }
-                HStack(spacing: 6) {
-                    ForEach([("15m", 15), ("1h", 60), ("3h", 180), ("∞", 0)], id: \.1) { title, minutes in
-                        PillButton(title: title) {
-                            controller.holdManually(for: minutes == 0 ? nil : TimeInterval(minutes * 60))
-                        }
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                SectionLabel(text: "Lid closed")
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(lidTitle).font(.system(size: 12, weight: .medium))
-                        Text(lidDetail).font(.system(size: 10.5)).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if controller.lidInstalled {
-                        Toggle("", isOn: Binding(
-                            get: { controller.lidModeEnabled },
-                            set: { controller.lidModeEnabled = $0 }))
-                            .toggleStyle(.switch)
-                            .controlSize(.mini)
-                            .labelsHidden()
-                    } else {
-                        PillButton(title: installing ? "Waiting…" : "Set up", prominent: true) {
-                            installing = true
-                            Task {
-                                await controller.installLidSupport()
-                                installing = false
-                            }
-                        }
-                        .frame(width: 84)
-                        .disabled(installing)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Stay awake")
+            TimelineView(.periodic(from: .now, by: 15)) { context in
+                if let hold = controller.manualHold {
+                    active(hold, now: context.date)
+                } else {
+                    picker(now: context.date)
                 }
             }
         }
     }
 
-    private var lidTitle: String {
+    private var stops: [TimeInterval?] { ManualHold.stops(onAC: controller.onAC) }
+    private var index: Int { min(max(storedIndex, 0), stops.count - 1) }
+
+    private func picker(now: Date) -> some View {
+        let duration = stops[index]
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(Theme.longDuration(duration))
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                Text(duration.map { "until \(now.addingTimeInterval($0).formatted(date: .omitted, time: .shortened))" }
+                     ?? "until you stop it")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                PillButton(title: "Start", prominent: true, compact: true) {
+                    controller.holdManually(for: duration)
+                }
+            }
+            StepSlider(count: stops.count, index: Binding(get: { index }, set: { storedIndex = $0 }),
+                       endLabels: (Theme.longDuration(stops.first!), Theme.longDuration(stops.last!)))
+        }
+    }
+
+    private func active(_ hold: (since: Date, until: Date), now: Date) -> some View {
+        let open = hold.until == .distantFuture
+        let total = hold.until.timeIntervalSince(hold.since)
+        let progress = open || total <= 0 ? 1 : max(0, min(1, hold.until.timeIntervalSince(now) / total))
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(open ? "Awake until you stop it" : "Awake until \(hold.until.formatted(date: .omitted, time: .shortened))")
+                    .font(.system(size: 12.5, weight: .medium))
+                Spacer()
+                if !open {
+                    Text("\(Theme.duration(now, hold.until)) left")
+                        .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary)
+                    Capsule().fill(Theme.accent).frame(width: geo.size.width * progress)
+                }
+            }
+            .frame(height: 4)
+            HStack(spacing: 6) {
+                if !open {
+                    PillButton(title: "+15m", compact: true) { controller.extendManualHold(by: 15 * 60) }
+                    PillButton(title: "+1h", compact: true) { controller.extendManualHold(by: 3600) }
+                }
+                Spacer()
+                PillButton(title: "Stop", compact: true) { controller.cancelManualHold() }
+            }
+        }
+    }
+}
+
+/// A slider that snaps to evenly spaced stops, drawn to match the panel.
+private struct StepSlider: View {
+    let count: Int
+    @Binding var index: Int
+    let endLabels: (String, String)
+
+    var body: some View {
+        VStack(spacing: 3) {
+            GeometryReader { geo in
+                let inset: CGFloat = 7
+                let width = geo.size.width - inset * 2
+                let step = count > 1 ? width / CGFloat(count - 1) : 0
+                let x = inset + step * CGFloat(index)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary).frame(height: 4).padding(.horizontal, inset)
+                    Capsule().fill(Theme.accent).frame(width: max(0, x - inset), height: 4).offset(x: inset)
+                    ForEach(0..<count, id: \.self) { i in
+                        Circle()
+                            .fill(i <= index ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.tertiary))
+                            .frame(width: 3, height: 3)
+                            .offset(x: inset + step * CGFloat(i) - 1.5)
+                    }
+                    Circle()
+                        .fill(.white)
+                        .shadow(color: .black.opacity(0.3), radius: 1.5, y: 0.5)
+                        .frame(width: 14, height: 14)
+                        .offset(x: x - 7)
+                }
+                .frame(height: 18)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                    guard step > 0 else { return }
+                    let raw = ((value.location.x - inset) / step).rounded()
+                    let next = Int(min(max(raw, 0), CGFloat(count - 1)))
+                    if next != index { index = next }
+                })
+            }
+            .frame(height: 18)
+            HStack {
+                Text(endLabels.0)
+                Spacer()
+                Text(endLabels.1)
+            }
+            .font(.system(size: 9, weight: .medium, design: .monospaced))
+            .foregroundStyle(.tertiary)
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Stay awake duration")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: index = min(index + 1, count - 1)
+            case .decrement: index = max(index - 1, 0)
+            @unknown default: break
+            }
+        }
+    }
+}
+
+// MARK: Lid closed
+
+private struct LidSection: View {
+    let controller: Controller
+    @State private var installing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionLabel(text: "Lid closed")
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.system(size: 12, weight: .medium))
+                    Text(detail).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if controller.lidInstalled {
+                    Toggle("", isOn: Binding(
+                        get: { controller.lidModeEnabled },
+                        set: { controller.lidModeEnabled = $0 }))
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .labelsHidden()
+                } else {
+                    PillButton(title: installing ? "Waiting…" : "Set up", prominent: true, compact: true) {
+                        installing = true
+                        Task {
+                            await controller.installLidSupport()
+                            installing = false
+                        }
+                    }
+                    .disabled(installing)
+                }
+            }
+        }
+    }
+
+    private var title: String {
         guard controller.lidInstalled else { return "Stay awake with the lid shut" }
         guard controller.lidModeEnabled else { return "Off" }
         return controller.lidVerdict.isArmed ? "Armed" : "Standing by"
     }
 
-    private var lidDetail: String {
+    private var detail: String {
         guard controller.lidInstalled else { return "Needs your password once" }
         switch controller.lidVerdict {
         case .armed: return controller.lidClosed ? "Lid is closed, still awake" : "Safe to close the lid"

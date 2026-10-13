@@ -24,20 +24,41 @@ final class RexMonitor {
         sessionBlocks.first { $0.value.contains(blockID) }?.key
     }
 
-    /// Brings Rex forward on a block: selects its session in the Rex app (needs
-    /// Rex's Remote Control setting; skipped quietly without it), focuses the
-    /// block, and activates the app.
-    func show(blockID: String) async {
-        guard let rexURL, let sessionID = sessionID(forBlock: blockID) else { return }
-        let clients = await runProcess(rexURL, ["client", "ls", "--json", "--autostart=false"])
-        let app = RexParser.appClient(fromJSON: clients.output)
-        if let app {
-            let selected = await runProcess(rexURL, ["do", "-C", app.clientID, "session.select", "session_id=\(sessionID)"])
-            if selected.status != 0 { onLog?("rex: session.select refused (turn on Remote Control in Rex settings)") }
-        }
-        _ = await runProcess(rexURL, ["focus", "-s", sessionID, blockID, "--autostart=false"])
-        if let pid = app?.pid { NSRunningApplication(processIdentifier: pid)?.activate() }
+    enum ShowOutcome {
+        case shown
+        /// The pane was focused, but Rex refused to switch sessions because its
+        /// Remote Control setting is off.
+        case needsRemoteControl
+        case unavailable
     }
+
+    /// Brings Rex forward on a block: selects its session in the Rex app,
+    /// focuses the block, and activates the app.
+    func show(blockID: String) async -> ShowOutcome {
+        guard let rexURL, let sessionID = sessionID(forBlock: blockID) else { return .unavailable }
+        let clients = await runProcess(rexURL, ["client", "ls", "--json", "--autostart=false"])
+        guard let app = RexParser.appClient(fromJSON: clients.output) else { return .unavailable }
+        let selected = await runProcess(rexURL, ["do", "-C", app.clientID, "session.select", "session_id=\(sessionID)"])
+        _ = await runProcess(rexURL, ["focus", "-s", sessionID, blockID, "--autostart=false"])
+        if let pid = app.pid, let bundleURL = NSRunningApplication(processIdentifier: pid)?.bundleURL {
+            // A menu bar app's plain activate() is ignored by cooperative
+            // activation; opening the app asks the system to bring it forward.
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            _ = try? await NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration)
+        }
+        if selected.status != 0 {
+            onLog?("rex: session.select refused (Remote Control is off in Rex settings)")
+            return .needsRemoteControl
+        }
+        return .shown
+    }
+
+    /// Opens Rex's server settings, where its Remote Control switch lives.
+    static func openRemoteControlSettings() {
+        if let url = URL(string: "rex://settings/server") { NSWorkspace.shared.open(url) }
+    }
+
     private var sessionBlocks: [String: Set<String>] = [:]
     private var retryDelay: TimeInterval = 2
 
