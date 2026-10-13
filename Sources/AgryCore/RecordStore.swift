@@ -11,8 +11,14 @@ public struct RecordStore: Sendable {
         var record = incoming
         if let existing = records[incoming.source], existing.state == incoming.state {
             record.stateSince = existing.stateSince
+            record.isDismissed = existing.isDismissed
         }
         records[incoming.source] = record
+    }
+
+    /// Stops these records holding until each next changes state.
+    public mutating func dismiss(_ sources: [RecordSource]) {
+        for source in sources { records[source]?.isDismissed = true }
     }
 
     public mutating func remove(_ source: RecordSource) {

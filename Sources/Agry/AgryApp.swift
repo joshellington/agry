@@ -56,7 +56,10 @@ extension Controller {
 @MainActor
 private func renderSnapshot(controller: Controller, to url: URL) {
     for scheme in [ColorScheme.light, .dark] {
-        let view = PanelView(controller: controller)
+        let view = PanelView(controller: controller,
+                             initiallyExpanded: ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_EXPAND"]
+                                 .flatMap { prefix in controller.rows.first { $0.name.hasPrefix(prefix) }?.id },
+                             allowsScrolling: false)
             .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.96))
             .environment(\.colorScheme, scheme)
         let renderer = ImageRenderer(content: view)

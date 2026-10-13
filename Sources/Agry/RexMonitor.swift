@@ -1,5 +1,5 @@
 import AgryCore
-import Foundation
+import AppKit
 
 /// Follows OSC 7501 status in every Rex session through one `rex do --all`
 /// process running `rexWatchScript`. Restarts with backoff when Rex goes away.
@@ -19,6 +19,25 @@ final class RexMonitor {
     private(set) var rexURL: URL?
 
     private var watcher: LineProcess?
+
+    func sessionID(forBlock blockID: String) -> String? {
+        sessionBlocks.first { $0.value.contains(blockID) }?.key
+    }
+
+    /// Brings Rex forward on a block: selects its session in the Rex app (needs
+    /// Rex's Remote Control setting; skipped quietly without it), focuses the
+    /// block, and activates the app.
+    func show(blockID: String) async {
+        guard let rexURL, let sessionID = sessionID(forBlock: blockID) else { return }
+        let clients = await runProcess(rexURL, ["client", "ls", "--json", "--autostart=false"])
+        let app = RexParser.appClient(fromJSON: clients.output)
+        if let app {
+            let selected = await runProcess(rexURL, ["do", "-C", app.clientID, "session.select", "session_id=\(sessionID)"])
+            if selected.status != 0 { onLog?("rex: session.select refused (turn on Remote Control in Rex settings)") }
+        }
+        _ = await runProcess(rexURL, ["focus", "-s", sessionID, blockID, "--autostart=false"])
+        if let pid = app?.pid { NSRunningApplication(processIdentifier: pid)?.activate() }
+    }
     private var sessionBlocks: [String: Set<String>] = [:]
     private var retryDelay: TimeInterval = 2
 

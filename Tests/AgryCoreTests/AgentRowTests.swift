@@ -63,3 +63,48 @@ private func rows(_ verdicts: [RecordVerdict], sessions: [ClaudeSession] = []) -
         #expect(result[0].isRemote == false)
     }
 }
+
+@Suite struct AgentRowDetailTests {
+    @Test func rowCarriesAllSourcesForDismissal() {
+        let result = rows([
+            verdict(.rex(blockID: "b", recordID: ""), .working),
+            verdict(.rex(blockID: "b", recordID: "a1"), .working, title: "child"),
+        ])
+        #expect(Set(result[0].sources) == [.rex(blockID: "b", recordID: ""), .rex(blockID: "b", recordID: "a1")])
+    }
+
+    @Test func childKeepsItsOwnState() {
+        let result = rows([
+            verdict(.rex(blockID: "b", recordID: ""), .working),
+            verdict(.rex(blockID: "b", recordID: "a1"), .blocked, title: "child"),
+        ])
+        #expect(result[0].children.first?.state == .blocked)
+    }
+
+    @Test func rexOriginKeepsBlockID() {
+        #expect(rows([verdict(.rex(blockID: "b", recordID: ""), .working)])[0].origin == .rex(blockID: "b"))
+    }
+
+    @Test func appRowIsNamedAfterApp() {
+        let result = rows([verdict(.app(pid: 9), .working, pid: 9, title: "Claude")])
+        #expect(result[0].name == "Claude" && result[0].origin == .app && result[0].message == nil)
+    }
+
+    @Test func blockedRowWithWorkingChildHoldsForWork() {
+        let result = rows([
+            verdict(.rex(blockID: "b", recordID: ""), .blocked),
+            verdict(.rex(blockID: "b", recordID: "a1"), .working, title: "child"),
+        ])
+        #expect(result[0].isHoldingForWork)
+    }
+
+    @Test func doneRowDoesNotHoldForWork() {
+        #expect(!rows([verdict(.rex(blockID: "b", recordID: ""), .done)])[0].isHoldingForWork)
+    }
+
+    @Test func remoteControlFlagComesFromSession() {
+        let result = rows([verdict(.rex(blockID: "b", recordID: ""), .working, pid: 42)],
+                          sessions: [session(pid: 42, cwd: "/p/raydio")])
+        #expect(result[0].remoteControlEnabled)
+    }
+}

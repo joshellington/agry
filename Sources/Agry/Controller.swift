@@ -31,6 +31,8 @@ final class Controller {
     @ObservationIgnored let power = PowerMonitor()
     @ObservationIgnored let rex = RexMonitor()
     @ObservationIgnored private let claude = ClaudeSessionMonitor()
+    @ObservationIgnored private let apps = AppAssertionMonitor()
+    @ObservationIgnored private var seenAppPIDs: Set<Int32> = []
     @ObservationIgnored private let assertion = SleepAssertion()
     @ObservationIgnored private let lid: LidGuard
     @ObservationIgnored private var policy = Policy(config: .defaults, isAlive: isProcessAlive)
@@ -61,6 +63,7 @@ final class Controller {
         rex.onLog = { [weak self] line in self?.note(line) }
         rex.onUpdate = { [weak self] update in self?.apply(update) }
         claude.onChange = { [weak self] sessions in self?.apply(sessions) }
+        apps.onChange = { [weak self] holding, names in self?.applyApps(holding: holding, names: names) }
         lid.onLog = { [weak self] line in self?.note(line) }
         NotificationCenter.default.addObserver(
             forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
@@ -75,10 +78,15 @@ final class Controller {
         reloadConfig()
         power.start()
         claude.start()
+        apps.start()
         rex.start()
         // Owner liveness, lid state and local input are sampled on a slow heartbeat.
         heartbeat = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.evaluate() }
+            MainActor.assumeIsolated {
+                self?.pruneApps()
+                self?.apps.rescan()
+                self?.evaluate()
+            }
         }
         evaluate()
     }
@@ -140,7 +148,40 @@ final class Controller {
         evaluate()
     }
 
+    // MARK: Row actions
+
+    /// Lets a row's records stop holding until they next change state.
+    func dismiss(_ row: AgentRow) {
+        if row.isManual { return cancelManualHold() }
+        store.dismiss(row.sources)
+        note("dismissed \(row.name)")
+        evaluate()
+    }
+
+    func showInRex(_ row: AgentRow) {
+        guard case .rex(let blockID) = row.origin else { return }
+        Task { await rex.show(blockID: blockID) }
+    }
+
     // MARK: Inputs
+
+    private func applyApps(holding: Set<Int32>, names: [Int32: String]) {
+        let now = Date()
+        for record in AppAssertions.records(holding: holding, previouslySeen: seenAppPIDs, names: names, now: now) {
+            store.apply(record)
+        }
+        seenAppPIDs.formUnion(holding)
+        note("apps holding: \(holding.sorted().map { "\(names[$0] ?? "?")(\($0))" })")
+        evaluate()
+    }
+
+    /// Forgets app records whose process has quit.
+    private func pruneApps() {
+        let dead = seenAppPIDs.filter { !isProcessAlive($0) }
+        guard !dead.isEmpty else { return }
+        seenAppPIDs.subtract(dead)
+        for pid in dead { store.remove(.app(pid: pid)) }
+    }
 
     private func apply(_ update: RexMonitor.Update) {
         let now = Date()

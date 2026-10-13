@@ -71,6 +71,9 @@ public struct Policy: Sendable {
             return RecordVerdict(record: record, holdUntil: live ? expiresAt : nil, isRemote: remote,
                                  reason: live ? "manual hold" : "manual hold, expired")
         }
+        if record.isDismissed {
+            return RecordVerdict(record: record, holdUntil: nil, isRemote: remote, reason: "dismissed")
+        }
         if let pid = record.ownerPID, !isAlive(pid) {
             return RecordVerdict(record: record, holdUntil: nil, isRemote: remote, reason: "owner process exited")
         }

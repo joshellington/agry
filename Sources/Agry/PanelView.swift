@@ -18,6 +18,14 @@ enum Theme {
         }
     }
 
+    /// Compact duration between two dates: "45s", "12m", "2h05".
+    static func duration(_ from: Date, _ to: Date) -> String {
+        let seconds = max(0, Int(to.timeIntervalSince(from)))
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = seconds / 60
+        return minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h\(String(format: "%02d", minutes % 60))"
+    }
+
     static func label(_ state: ProgramState, kind: String?) -> String {
         switch state {
         case .blocked: kind.map { "needs \($0)" } ?? "blocked"
@@ -28,6 +36,9 @@ enum Theme {
 
 struct PanelView: View {
     let controller: Controller
+    var initiallyExpanded: String?
+    /// Snapshots cannot render ScrollView, so they lay every row out flat.
+    var allowsScrolling = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,7 +47,7 @@ struct PanelView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 12)
             Divider().opacity(0.5)
-            AgentsSection(controller: controller)
+            AgentsSection(controller: controller, allowsScrolling: allowsScrolling, expanded: initiallyExpanded)
                 .padding(.vertical, 10)
             Divider().opacity(0.5)
             ControlsSection(controller: controller)
@@ -63,12 +74,12 @@ private struct HeaderView: View {
                 Circle().fill(mood == .resting ? AnyShapeStyle(.quaternary) : AnyShapeStyle(Theme.accent.opacity(0.18)))
                 EyeGlyphView(mood: mood, lineWidth: 1.4)
                     .foregroundStyle(mood == .resting ? AnyShapeStyle(.secondary) : AnyShapeStyle(Theme.accent))
-                    .frame(width: 22)
+                    .frame(width: 24)
             }
             .frame(width: 40, height: 40)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(mood == .resting ? "Resting" : "Awake")
+                Text(title(mood))
                     .font(.system(size: 16, weight: .semibold))
                 Text(subtitle)
                     .font(.system(size: 11))
@@ -80,7 +91,20 @@ private struct HeaderView: View {
         .overlay(alignment: .topTrailing) { StatusChips(controller: controller) }
     }
 
+    private func title(_ mood: EyeGlyph.Mood) -> String {
+        switch mood {
+        case .awake: "Awake"
+        case .attention: "Needs you"
+        case .resting: "Resting"
+        }
+    }
+
     private var subtitle: String {
+        let blocked = controller.rows.filter { $0.state == .blocked && $0.holdUntil != nil }
+        if let first = blocked.first {
+            let what = "\(first.name) · \(Theme.label(first.state, kind: first.kind))"
+            return blocked.count > 1 ? "\(what) (+\(blocked.count - 1))" : what
+        }
         let holding = controller.rows.filter { $0.holdUntil != nil }
         guard !holding.isEmpty else { return "Sleep behaves normally" }
         let noun = holding.count == 1 ? "1 agent" : "\(holding.count) agents"
@@ -143,6 +167,9 @@ struct SectionLabel: View {
 
 private struct AgentsSection: View {
     let controller: Controller
+    let allowsScrolling: Bool
+    /// The one expanded row, if any. Clicking a row toggles it.
+    @State var expanded: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -156,15 +183,20 @@ private struct AgentsSection: View {
             } else {
                 // Countdown text refreshes on a slow tick, only while the panel is open.
                 TimelineView(.periodic(from: .now, by: 15)) { context in
-                    let list = VStack(spacing: 0) {
+                    let list = VStack(spacing: 2) {
                         ForEach(controller.rows) { row in
-                            AgentRowView(row: row, now: context.date)
+                            AgentRowView(row: row, now: context.date, controller: controller,
+                                         isExpanded: expanded == row.id) {
+                                withAnimation(.snappy(duration: 0.22)) {
+                                    expanded = expanded == row.id ? nil : row.id
+                                }
+                            }
                         }
                     }
                     .padding(.horizontal, 6)
                     // Scroll only when the list would make the panel unwieldy.
-                    if controller.rows.count > 6 {
-                        ScrollView { list }.frame(height: 340)
+                    if allowsScrolling && (controller.rows.count > 6 || expanded != nil && controller.rows.count > 3) {
+                        ScrollView { list }.frame(height: 360)
                     } else {
                         list
                     }
@@ -177,9 +209,36 @@ private struct AgentsSection: View {
 private struct AgentRowView: View {
     let row: AgentRow
     let now: Date
+    let controller: Controller
+    let isExpanded: Bool
+    let toggle: () -> Void
     @State private var hovering = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            summary
+                .contentShape(Rectangle())
+                .onTapGesture(perform: toggle)
+            if isExpanded {
+                AgentDetailView(row: row, now: now, controller: controller)
+                    .padding(.leading, 17)
+                    .padding(.top, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 9).fill(background))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(isExpanded ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)))
+        .onHover { hovering = $0 }
+    }
+
+    private var background: AnyShapeStyle {
+        if isExpanded { return AnyShapeStyle(.quaternary.opacity(0.45)) }
+        return hovering ? AnyShapeStyle(.quaternary.opacity(0.7)) : AnyShapeStyle(.clear)
+    }
+
+    private var summary: some View {
         HStack(alignment: .top, spacing: 10) {
             StateDot(state: row.state, active: row.holdUntil != nil)
                 .padding(.top, 4)
@@ -196,32 +255,128 @@ private struct AgentRowView: View {
                     }
                     Spacer(minLength: 4)
                     HoldBadge(row: row, now: now)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8.5, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .opacity(hovering || isExpanded ? 1 : 0)
                 }
                 Text(detail)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(isExpanded ? 6 : 1)
                     .truncationMode(.tail)
-                if !row.childTitles.isEmpty {
-                    Text("↳ \(row.childTitles.count == 1 ? row.childTitles[0] : "\(row.childTitles.count) subagents")")
+                    .fixedSize(horizontal: false, vertical: isExpanded)
+                if !row.children.isEmpty && !isExpanded {
+                    Text("↳ \(row.children.count == 1 ? row.children[0].title : "\(row.children.count) subagents")")
                         .font(.system(size: 10.5))
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
-                        .help(row.childTitles.joined(separator: "\n"))
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? AnyShapeStyle(.quaternary.opacity(0.7)) : AnyShapeStyle(.clear)))
-        .onHover { hovering = $0 }
-        .help(row.reason)
     }
 
     private var detail: String {
         var parts = [Theme.label(row.state, kind: row.kind)]
         if let message = row.message, !message.isEmpty { parts.append(message) }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// The expanded part of a row: facts on the left in a small grid, subagents,
+/// then actions.
+private struct AgentDetailView: View {
+    let row: AgentRow
+    let now: Date
+    let controller: Controller
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 5) {
+                fact("State", "\(Theme.label(row.state, kind: row.kind)) · for \(Theme.duration(row.since, now))")
+                fact("Holding", holding)
+                fact("Remote", remote)
+                if let cwd = row.cwd { fact("Project", (cwd as NSString).abbreviatingWithTildeInPath) }
+                fact("Source", [row.origin.label, row.pid.map { "pid \($0)" }].compactMap { $0 }.joined(separator: " · "))
+            }
+
+            if !row.children.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    SectionLabel(text: "Subagents")
+                    ForEach(row.children) { child in
+                        HStack(spacing: 8) {
+                            StateDot(state: child.state, active: child.holdUntil != nil)
+                            Text(child.title).font(.system(size: 11)).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(Theme.label(child.state, kind: nil))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 6) {
+                if case .rex = row.origin {
+                    PillButton(title: "Show in Rex", compact: true) { controller.showInRex(row) }
+                }
+                if row.holdUntil != nil {
+                    PillButton(title: row.isManual ? "Cancel hold" : "Let it sleep", compact: true) { controller.dismiss(row) }
+                        .help("Stop this agent holding the Mac awake until its state changes")
+                }
+                PillButton(title: copied ? "Copied" : "Copy", compact: true) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(copyText, forType: .string)
+                    copied = true
+                }
+            }
+        }
+        .font(.system(size: 11))
+    }
+
+    private func fact(_ key: String, _ value: String) -> some View {
+        GridRow {
+            Text(key.uppercased())
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .tracking(1)
+                .foregroundStyle(.tertiary)
+                .gridColumnAlignment(.leading)
+            Text(value)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var holding: String {
+        if row.isDismissed { return "No · you let it sleep" }
+        guard let until = row.holdUntil else { return "No · \(row.reason)" }
+        if until == .distantFuture { return "Until you turn it off" }
+        if row.isHoldingForWork {
+            let who = row.state == .working ? "" : "subagents "
+            return "While \(who)working (cap at \(until.formatted(date: .omitted, time: .shortened)))"
+        }
+        return "Until \(until.formatted(date: .omitted, time: .shortened)) · \(Theme.duration(now, until)) left"
+    }
+
+    private var remote: String {
+        guard row.remoteControlEnabled else { return "Remote control off" }
+        if row.isRemote { return "On · you're away, holding longer for phone replies" }
+        return "On · you're here, normal timeouts"
+    }
+
+    private var copyText: String {
+        var lines = ["\(row.name) — \(Theme.label(row.state, kind: row.kind))"]
+        if let message = row.message { lines.append(message) }
+        lines.append("holding: \(holding)")
+        lines.append("remote: \(remote)")
+        if let cwd = row.cwd { lines.append("project: \(cwd)") }
+        lines.append("source: \(row.origin.label)\(row.pid.map { " pid \($0)" } ?? "")")
+        for child in row.children { lines.append("  ↳ \(child.title): \(child.state.rawValue)") }
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -263,7 +418,7 @@ private struct HoldBadge: View {
     private var text: String? {
         guard let until = row.holdUntil else { return row.state == .idle ? nil : "released" }
         if until == .distantFuture { return "∞" }
-        if row.state == .working && !row.isManual { return "live" }
+        if row.isHoldingForWork { return "live" }
         let minutes = max(1, Int(until.timeIntervalSince(now) / 60))
         return minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h\(String(format: "%02d", minutes % 60))"
     }
@@ -346,15 +501,17 @@ private struct ControlsSection: View {
 private struct PillButton: View {
     let title: String
     var prominent = false
+    var compact = false
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11.5, weight: .medium, design: .monospaced))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
+                .font(.system(size: compact ? 10.5 : 11.5, weight: .medium, design: .monospaced))
+                .frame(maxWidth: compact ? nil : .infinity)
+                .padding(.horizontal, compact ? 9 : 0)
+                .padding(.vertical, compact ? 4 : 5)
                 .foregroundStyle(prominent ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.primary))
                 .background(RoundedRectangle(cornerRadius: 7).fill(fill))
                 .contentShape(Rectangle())

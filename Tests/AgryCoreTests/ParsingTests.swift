@@ -79,6 +79,12 @@ private enum Fixture {
         #expect(RexParser.sessionIDs(fromJSON: Data(Fixture.sessions.utf8)) == ["session:A", "session:B"])
     }
 
+    @Test func appClient() {
+        let json = #"{"clients":[{"client_id":"client:cli","principal":{"pid":5}},{"client_id":"client:app","info":{"kind":"app","name":"Rex Beta"},"principal":{"pid":73837}}]}"#
+        let app = RexParser.appClient(fromJSON: Data(json.utf8))
+        #expect(app?.clientID == "client:app" && app?.pid == 73837)
+    }
+
     @Test func terminalBlocksOnly() {
         #expect(RexParser.terminalBlockIDs(fromJSON: Data(Fixture.blocks.utf8)) == ["block:T"])
     }

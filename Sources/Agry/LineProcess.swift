@@ -51,3 +51,23 @@ final class LineProcess: @unchecked Sendable {
         }
     }
 }
+
+/// Runs a short command off the main thread; returns its exit status and stdout.
+func runProcess(_ executable: URL, _ arguments: [String]) async -> (status: Int32, output: Data) {
+    await Task.detached {
+        let process = Process()
+        let stdout = Pipe()
+        process.executableURL = executable
+        process.arguments = arguments
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return (-1, Data())
+        }
+        let data = stdout.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return (process.terminationStatus, data)
+    }.value
+}

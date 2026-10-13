@@ -74,6 +74,14 @@ public enum RexParser {
 
     public static let terminalCreator = "com.superlogical.terminal"
 
+    /// The Rex GUI app's client (from `rex client ls --json`), if connected.
+    public static func appClient(fromJSON data: Data) -> (clientID: String, pid: Int32?)? {
+        guard let list = try? JSONDecoder().decode(ClientList.self, from: data),
+              let app = list.clients.first(where: { $0.info?.kind == "app" })
+        else { return nil }
+        return (app.client_id, app.principal?.pid)
+    }
+
     /// Rex timestamps: RFC 3339 with microseconds and a numeric offset.
     static func parseDate(_ string: String) -> Date? {
         (try? Date(string, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
@@ -167,6 +175,19 @@ public enum RexParser {
 
     private struct SnapshotResult: Decodable {
         var records: [WireRecord]
+    }
+
+    private struct ClientList: Decodable {
+        var clients: [Client]
+
+        struct Client: Decodable {
+            var client_id: String
+            var info: Info?
+            var principal: Principal?
+        }
+
+        struct Info: Decodable { var kind: String? }
+        struct Principal: Decodable { var pid: Int32? }
     }
 
     private struct SessionList: Decodable {
