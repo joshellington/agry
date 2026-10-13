@@ -60,3 +60,16 @@ public enum LidPolicy {
         return remoteHold ? .armed : .disarmed(.batteryNotRemote)
     }
 }
+
+/// Reads the system's actual disablesleep flag from `pmset -g` output, so a
+/// flag cleared by another tool can be noticed and re-applied.
+public enum PmsetOutput {
+    /// `SleepDisabled 1` → true, `0` → false, missing → nil.
+    public static func sleepDisabled(from output: String) -> Bool? {
+        for line in output.split(separator: "\n") {
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            if fields.count >= 2, fields[0] == "SleepDisabled" { return fields[1] == "1" }
+        }
+        return nil
+    }
+}

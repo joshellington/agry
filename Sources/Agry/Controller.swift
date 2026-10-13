@@ -79,7 +79,10 @@ final class Controller {
         rex.start()
         // Owner liveness, lid state and local input are sampled on a slow heartbeat.
         heartbeat = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.evaluate() }
+            MainActor.assumeIsolated {
+                self?.evaluate()
+                self?.lid.reassertIfCleared()
+            }
         }
         evaluate()
     }

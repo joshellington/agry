@@ -48,3 +48,19 @@ private func context(enabled: Bool = true, onAC: Bool = true, battery: Int? = 80
         #expect(LidPolicy.evaluate(decision(holding: true, remote: true), context(onAC: false, battery: 20)) == .disarmed(.lowBattery))
     }
 }
+
+@Suite struct PmsetOutputTests {
+    private let header = "System-wide power settings:\n"
+
+    @Test func readsSetFlag() {
+        #expect(PmsetOutput.sleepDisabled(from: header + " SleepDisabled\t\t1\nCurrently in use:\n") == true)
+    }
+
+    @Test func readsClearedFlag() {
+        #expect(PmsetOutput.sleepDisabled(from: header + " SleepDisabled\t\t0\n") == false)
+    }
+
+    @Test func missingFlagIsUnknown() {
+        #expect(PmsetOutput.sleepDisabled(from: "Currently in use:\n sleep 0\n") == nil)
+    }
+}
