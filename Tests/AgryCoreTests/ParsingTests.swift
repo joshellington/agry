@@ -26,12 +26,16 @@ private enum Fixture {
         #expect(RexParser.event(fromLine: Fixture.sessionCreated) == .sessionCreated(sessionID: "session:S"))
     }
 
+    @Test func ready() {
+        #expect(RexParser.event(fromLine: #"{"type":"agry_ready"}"#) == .ready)
+    }
+
     @Test func sessionDestroyed() {
         #expect(RexParser.event(fromLine: Fixture.sessionDestroyed) == .sessionDestroyed(sessionID: "session:S"))
     }
 
     @Test func rootStatusChanged() {
-        let expected = RexStatus(recordID: "", state: .working, app: "probe", kind: nil, message: "hi", ownerPID: 96193)
+        let expected = RexStatus(recordID: "", state: .working, app: "probe", kind: nil, message: "hi", ownerPID: 96193, updatedAt: Date(timeIntervalSince1970: 1791918309.415987))
         #expect(RexParser.event(fromLine: Fixture.rootWorking) == .statusChanged(sessionID: "session:S", blockID: "block:B", status: expected))
     }
 
@@ -57,7 +61,13 @@ private enum Fixture {
 
     @Test func snapshotRecords() {
         let records = RexParser.snapshot(fromJSON: Data(Fixture.snapshot.utf8))
-        #expect(records == [RexStatus(recordID: "", state: .working, app: "claude-code", kind: nil, message: "Query", ownerPID: 87514)])
+        #expect(records == [RexStatus(recordID: "", state: .working, app: "claude-code", kind: nil, message: "Query", ownerPID: 87514, updatedAt: Date(timeIntervalSince1970: 1791917772.278194))])
+    }
+
+    @Test func snapshotRecordKeepsReportedAge() {
+        let status = RexParser.snapshot(fromJSON: Data(Fixture.snapshot.utf8))[0]
+        let now = Date(timeIntervalSince1970: 1791917772 + 600)
+        #expect(status.record(blockID: "b", observedAt: now).stateSince < now.addingTimeInterval(-599))
     }
 
     @Test func sessionList() {

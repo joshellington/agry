@@ -8,17 +8,22 @@ public struct RexStatus: Equatable, Sendable {
     public var kind: String?
     public var message: String?
     public var ownerPID: Int32?
+    /// Rex's last-report time. Lets a snapshot taken at launch keep the age of
+    /// an old `done` record instead of restarting its linger.
+    public var updatedAt: Date?
 
     public func record(blockID: String, observedAt now: Date) -> StatusRecord {
         StatusRecord(
             source: .rex(blockID: blockID, recordID: recordID),
             state: state, app: app, kind: kind, message: message,
-            ownerPID: ownerPID, stateSince: now)
+            ownerPID: ownerPID, stateSince: min(updatedAt ?? now, now))
     }
 }
 
 /// The subset of Rex events agry acts on.
 public enum RexEvent: Equatable, Sendable {
+    /// agry's watch script finished its startup snapshot.
+    case ready
     case sessionCreated(sessionID: String)
     case sessionDestroyed(sessionID: String)
     case statusChanged(sessionID: String, blockID: String, status: RexStatus)
@@ -30,9 +35,10 @@ public enum RexParser {
     /// Parses one line of `rex events --json`. Returns nil for events agry ignores.
     public static func event(fromLine line: some StringProtocol) -> RexEvent? {
         guard let data = line.data(using: .utf8),
-              let envelope = try? JSONDecoder().decode(Envelope.self, from: data),
-              let payload = envelope.payload
+              let envelope = try? JSONDecoder().decode(Envelope.self, from: data)
         else { return nil }
+        if envelope.type == "agry_ready" { return .ready }
+        guard let payload = envelope.payload else { return nil }
 
         switch envelope.type {
         case "session_created":
@@ -66,6 +72,12 @@ public enum RexParser {
     }
 
     public static let terminalCreator = "com.superlogical.terminal"
+
+    /// Rex timestamps: RFC 3339 with microseconds and a numeric offset.
+    static func parseDate(_ string: String) -> Date? {
+        (try? Date(string, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true)))
+            ?? (try? Date(string, strategy: .iso8601))
+    }
 
     private static func sessionEvent(_ event: SessionEvent, sessionID: String) -> RexEvent? {
         guard let payload = event.payload, let blockID = payload.block_id else { return nil }
@@ -131,6 +143,7 @@ public enum RexParser {
         var kind: String?
         var msg: String?
         var owner: Owner?
+        var updated_at: String?
 
         struct Owner: Decodable {
             var pid: Int32
@@ -144,7 +157,8 @@ public enum RexParser {
                 app: effective_app ?? app,
                 kind: kind,
                 message: msg,
-                ownerPID: owner?.pid)
+                ownerPID: owner?.pid,
+                updatedAt: updated_at.flatMap(RexParser.parseDate))
         }
     }
 

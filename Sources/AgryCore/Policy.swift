@@ -32,6 +32,8 @@ public struct Decision: Equatable, Sendable {
     public var isHolding: Bool
     /// The earliest future moment a verdict changes; re-evaluate then.
     public var nextDeadline: Date?
+
+    public static let empty = Decision(verdicts: [], isHolding: false, nextDeadline: nil)
 }
 
 public struct Policy: Sendable {
