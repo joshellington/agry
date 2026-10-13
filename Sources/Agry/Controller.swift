@@ -17,7 +17,7 @@ final class Controller {
     let rex = RexMonitor()
     private let claude = ClaudeSessionMonitor()
     private let assertion = SleepAssertion()
-    private let policy = Policy(config: .defaults, isAlive: isProcessAlive)
+    private var policy = Policy(config: .defaults, isAlive: isProcessAlive)
     private var deadlineTimer: Timer?
     private var heartbeat: Timer?
 
@@ -35,6 +35,7 @@ final class Controller {
         rex.onUpdate = { [weak self] update in self?.apply(update) }
         claude.onChange = { [weak self] sessions in self?.apply(sessions) }
 
+        reloadConfig()
         power.start()
         claude.start()
         rex.start()
@@ -48,6 +49,28 @@ final class Controller {
     func stop() {
         rex.stop()
         assertion.set(held: false, reason: "")
+    }
+
+    // MARK: Config
+
+    let configURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appending(path: "agry/config.json")
+
+    /// Loads `config.json`, writing the defaults there first if it is missing.
+    /// A malformed file is reported and the previous config is kept.
+    func reloadConfig() {
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: configURL.path) {
+            try? fm.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? ConfigFile.defaultsJSON().write(to: configURL)
+        }
+        do {
+            policy.config = try ConfigFile.parse(Data(contentsOf: configURL)).policy
+            note("config loaded from \(configURL.path)")
+        } catch {
+            note("config error, keeping previous: \(error)")
+        }
+        evaluate()
     }
 
     // MARK: Manual hold

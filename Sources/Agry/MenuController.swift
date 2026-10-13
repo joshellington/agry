@@ -1,5 +1,6 @@
 import AgryCore
 import AppKit
+import ServiceManagement
 
 /// The menu bar item. The menu is rebuilt each time it opens.
 @MainActor
@@ -48,6 +49,10 @@ final class MenuController: NSObject, NSMenuDelegate {
         menu.addItem(keepAwakeItem())
 
         menu.addItem(.separator())
+        let login = action("Launch at Login", #selector(toggleLogin))
+        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        menu.addItem(login)
+        menu.addItem(action("Edit Config…", #selector(editConfig)))
         menu.addItem(debugItem())
         menu.addItem(action("Quit agry", #selector(quit), key: "q"))
     }
@@ -91,6 +96,7 @@ final class MenuController: NSObject, NSMenuDelegate {
         sub.addItem(action("Open Event Log", #selector(openLog)))
         sub.addItem(action("Copy State", #selector(copyState)))
         sub.addItem(action("Re-evaluate", #selector(reevaluate)))
+        sub.addItem(action("Reload Config", #selector(reloadConfig)))
         item.submenu = sub
         return item
     }
@@ -121,6 +127,26 @@ final class MenuController: NSObject, NSMenuDelegate {
     @objc private func cancelHold() { controller.cancelManualHold() }
 
     @objc private func reevaluate() { controller.evaluate() }
+
+    @objc private func reloadConfig() { controller.reloadConfig() }
+
+    @objc private func editConfig() {
+        NSWorkspace.shared.open(controller.configURL)
+    }
+
+    @objc private func toggleLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+            controller.note("launch at login: \(service.status == .enabled)")
+        } catch {
+            controller.note("launch at login failed: \(error)")
+        }
+    }
 
     @objc private func quit() { NSApp.terminate(nil) }
 
