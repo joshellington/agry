@@ -44,8 +44,8 @@ enum Theme {
 
 struct PanelView: View {
     let controller: Controller
-    /// The agent whose details are showing, if any (a drill-in page).
-    @State var selected: String?
+    /// Which page shows: the list, or one agent's details (a drill-in page).
+    let navigation: PanelNavigation
     /// Snapshots cannot render ScrollView, so they lay every row out flat.
     var allowsScrolling = true
 
@@ -81,16 +81,18 @@ struct PanelView: View {
                 .padding(.vertical, 8)
         }
         .frame(width: Theme.width)
+        // Report a definite height so the hosting panel can fit it exactly.
+        .fixedSize(horizontal: false, vertical: true)
         .tint(Theme.accent)
     }
 
     /// Falls back to the list when the selected agent goes away.
     private var selectedRow: AgentRow? {
-        selected.flatMap { id in controller.rows.first { $0.id == id } }
+        navigation.selected.flatMap { id in controller.rows.first { $0.id == id } }
     }
 
     private func navigate(to id: String?) {
-        withAnimation(.snappy(duration: 0.25)) { selected = id }
+        withAnimation(.snappy(duration: 0.25)) { navigation.selected = id }
     }
 }
 
@@ -636,12 +638,10 @@ private struct LidSection: View {
                 }
                 Spacer()
                 if controller.lidInstalled {
-                    Toggle("", isOn: Binding(
+                    Toggle("Lid-closed mode", isOn: Binding(
                         get: { controller.lidModeEnabled },
                         set: { controller.lidModeEnabled = $0 }))
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
-                        .labelsHidden()
+                        .toggleStyle(AccentSwitchStyle())
                 } else {
                     PillButton(title: installing ? "Waiting…" : "Set up", prominent: true, compact: true) {
                         installing = true
@@ -696,6 +696,30 @@ private struct PillButton: View {
     private var fill: AnyShapeStyle {
         if prominent { return AnyShapeStyle(Theme.accent.opacity(hovering ? 0.3 : 0.18)) }
         return hovering ? AnyShapeStyle(Theme.accent.opacity(0.22)) : AnyShapeStyle(.quaternary.opacity(0.6))
+    }
+}
+
+/// A switch drawn by the panel itself. The system switch renders in its
+/// inactive (gray) look inside a panel that never activates the app.
+private struct AccentSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.18)) { configuration.isOn.toggle() }
+        } label: {
+            Capsule()
+                .fill(configuration.isOn ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.quaternary))
+                .frame(width: 30, height: 18)
+                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                    Circle()
+                        .fill(.white)
+                        .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
+                        .padding(2)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Lid-closed mode")
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
 }
 

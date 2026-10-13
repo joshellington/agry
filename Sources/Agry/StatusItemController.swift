@@ -1,0 +1,164 @@
+import AppKit
+import Observation
+import SwiftUI
+
+/// Which page the panel shows. Owned outside the view so the panel can reset
+/// to the list when it closes, and so dev hooks can drive it.
+@MainActor
+@Observable
+final class PanelNavigation {
+    var selected: String?
+}
+
+/// The menu bar icon and its panel.
+///
+/// Replaces SwiftUI's MenuBarExtra, whose window grows with its content but
+/// does not shrink back, leaving transparent bands. Here the panel is resized
+/// to the content's fitting size on every layout change, top edge pinned under
+/// the icon.
+@MainActor
+final class StatusItemController: NSObject {
+    private let controller: Controller
+    let navigation = PanelNavigation()
+    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    private let panel: AgryPanel
+    private let hosting: SizeReportingHostingView<AnyView>
+    private var outsideClickMonitor: Any?
+    private var keyMonitor: Any?
+
+    init(controller: Controller) {
+        self.controller = controller
+        hosting = SizeReportingHostingView(rootView: AnyView(EmptyView()))
+        panel = AgryPanel(contentRect: NSRect(x: 0, y: 0, width: Theme.width, height: 400))
+        super.init()
+
+        hosting.rootView = AnyView(PanelView(controller: controller, navigation: navigation))
+        hosting.onFittingSizeChange = { [weak self] in self?.fitPanel() }
+
+        let background = NSVisualEffectView()
+        background.material = .popover
+        background.state = .active
+        background.blendingMode = .behindWindow
+        background.wantsLayer = true
+        background.layer?.cornerRadius = 12
+        background.layer?.masksToBounds = true
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        background.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.leadingAnchor.constraint(equalTo: background.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: background.trailingAnchor),
+            hosting.topAnchor.constraint(equalTo: background.topAnchor),
+        ])
+        panel.contentView = background
+
+        if let button = statusItem.button {
+            button.target = self
+            button.action = #selector(togglePanel)
+        }
+        trackIcon()
+    }
+
+    // MARK: Icon
+
+    /// Redraws the icon whenever the mood changes.
+    private func trackIcon() {
+        let mood = withObservationTracking {
+            controller.mood
+        } onChange: { [weak self] in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.trackIcon() } }
+        }
+        statusItem.button?.image = EyeGlyph.menuBarImage(mood)
+        statusItem.button?.setAccessibilityLabel(mood == .resting ? "agry: sleep allowed" : "agry: keeping awake")
+    }
+
+    // MARK: Panel
+
+    var isOpen: Bool { panel.isVisible }
+
+    @objc func togglePanel() {
+        isOpen ? closePanel() : openPanel()
+    }
+
+    func openPanel() {
+        controller.evaluate()
+        fitPanel()
+        panel.orderFrontRegardless()
+        panel.makeKey()
+        statusItem.button?.highlight(true)
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePanel() }
+        }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == 53 else { return event } // Esc
+            MainActor.assumeIsolated { self?.closePanel() }
+            return nil
+        }
+    }
+
+    func closePanel() {
+        panel.orderOut(nil)
+        statusItem.button?.highlight(false)
+        navigation.selected = nil
+        if let outsideClickMonitor { NSEvent.removeMonitor(outsideClickMonitor) }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        outsideClickMonitor = nil
+        keyMonitor = nil
+    }
+
+    /// Sizes the panel to its content and pins its top edge under the icon.
+    func fitPanel() {
+        let size = hosting.fittingSize
+        guard size.height > 0, let button = statusItem.button, let buttonWindow = button.window else { return }
+        let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        let screen = buttonWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        var x = anchor.minX
+        x = min(x, screen.maxX - size.width - 8)
+        x = max(x, screen.minX + 8)
+        let top = anchor.minY - 6
+        panel.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
+    }
+
+    var panelFrame: NSRect { panel.frame }
+}
+
+/// A borderless, non-activating panel that can still take key focus for
+/// buttons, text selection and Esc.
+final class AgryPanel: NSPanel {
+    init(contentRect: NSRect) {
+        super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        isFloatingPanel = true
+        level = .popUpMenu
+        backgroundColor = .clear
+        isOpaque = false
+        hasShadow = true
+        hidesOnDeactivate = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+    }
+
+    override var canBecomeKey: Bool { true }
+}
+
+/// Reports when SwiftUI's fitting size may have changed.
+final class SizeReportingHostingView<Content: View>: NSHostingView<Content> {
+    var onFittingSizeChange: (() -> Void)?
+    private var lastSize = NSSize.zero
+
+    override func invalidateIntrinsicContentSize() {
+        super.invalidateIntrinsicContentSize()
+        reportIfChanged()
+    }
+
+    override func layout() {
+        super.layout()
+        reportIfChanged()
+    }
+
+    private func reportIfChanged() {
+        let size = fittingSize
+        guard size != lastSize else { return }
+        lastSize = size
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.onFittingSizeChange?() }
+        }
+    }
+}

@@ -4,11 +4,17 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = Controller()
+    private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also right when launched as a bare executable (no LSUIElement).
         NSApp.setActivationPolicy(.accessory)
         controller.start()
+        let statusItem = StatusItemController(controller: controller)
+        self.statusItem = statusItem
+        if ProcessInfo.processInfo.environment["AGRY_DEBUG_PANEL_CYCLE"] != nil {
+            debugPanelCycle(statusItem, controller: controller)
+        }
         if let minutes = ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_HOLD"].flatMap(Double.init) {
             controller.holdManually(for: minutes * 60)
         }
@@ -28,23 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct AgryApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
+    // The menu bar item and panel are AppKit (see StatusItemController); the
+    // app needs a scene, so it declares an empty Settings one.
     var body: some Scene {
-        MenuBarExtra {
-            PanelView(controller: delegate.controller)
-        } label: {
-            MenuBarLabel(controller: delegate.controller)
-        }
-        .menuBarExtraStyle(.window)
-    }
-}
-
-private struct MenuBarLabel: View {
-    let controller: Controller
-
-    var body: some View {
-        let mood = controller.mood
-        Image(nsImage: EyeGlyph.menuBarImage(mood))
-            .accessibilityLabel(mood == .resting ? "agry: sleep allowed" : "agry: keeping awake")
+        Settings { EmptyView() }
     }
 }
 
@@ -59,10 +52,10 @@ extension Controller {
 @MainActor
 private func renderSnapshot(controller: Controller, to url: URL) {
     for scheme in [ColorScheme.light, .dark] {
-        let view = PanelView(controller: controller,
-                             selected: ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_EXPAND"]
-                                 .flatMap { prefix in controller.rows.first { $0.name.hasPrefix(prefix) }?.id },
-                             allowsScrolling: false)
+        let navigation = PanelNavigation()
+        navigation.selected = ProcessInfo.processInfo.environment["AGRY_SNAPSHOT_EXPAND"]
+            .flatMap { prefix in controller.rows.first { $0.name.hasPrefix(prefix) }?.id }
+        let view = PanelView(controller: controller, navigation: navigation, allowsScrolling: false)
             .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.96))
             .environment(\.colorScheme, scheme)
         let renderer = ImageRenderer(content: view)
@@ -102,4 +95,29 @@ private func renderSnapshot(controller: Controller, to url: URL) {
         try? png.write(to: url.deletingPathExtension().appendingPathExtension("glyphs.png"))
     }
     controller.note("snapshot written next to \(url.path)")
+}
+
+/// Dev aid: opens the panel, drills into the first agent and back, logging the
+/// panel frame at each step so resizing can be checked without clicking.
+@MainActor
+private func debugPanelCycle(_ statusItem: StatusItemController, controller: Controller) {
+    let steps: [(TimeInterval, String, () -> Void)] = [
+        (3, "open", { statusItem.openPanel() }),
+        (5, "detail", { statusItem.navigation.selected = controller.rows.first?.id }),
+        (7, "back", { statusItem.navigation.selected = nil }),
+        (9, "close", { statusItem.closePanel() }),
+        (10, "reopen", { statusItem.openPanel() }),
+    ]
+    for (delay, name, action) in steps {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            MainActor.assumeIsolated {
+                action()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    MainActor.assumeIsolated {
+                        controller.note("panel \(name): \(statusItem.panelFrame) open=\(statusItem.isOpen)")
+                    }
+                }
+            }
+        }
+    }
 }
