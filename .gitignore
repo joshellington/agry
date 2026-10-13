@@ -11,3 +11,6 @@ xcuserdata/
 .env.*
 *.local.json
 .claude/settings.local.json
+
+# Private working notes
+IMPLEMENTATION_PLAN.md
