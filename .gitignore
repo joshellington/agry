@@ -1,5 +1,13 @@
+# Build output
 .build/
 .swiftpm/
 build/
 *.xcodeproj
+xcuserdata/
+
+# Local / machine-specific
 .DS_Store
+.env
+.env.*
+*.local.json
+.claude/settings.local.json
