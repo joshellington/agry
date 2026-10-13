@@ -67,6 +67,17 @@ private func renderSnapshot(controller: Controller, to url: URL) {
         let target = url.deletingPathExtension().appendingPathExtension("\(scheme == .dark ? "dark" : "light").png")
         try? png.write(to: target)
     }
+    for scheme in [ColorScheme.light, .dark] {
+        let help = HelpView(config: controller.config, onAC: controller.onAC)
+            .background(scheme == .dark ? Color(white: 0.16) : Color(white: 0.96))
+            .environment(\.colorScheme, scheme)
+        let renderer = ImageRenderer(content: help)
+        renderer.scale = 2
+        if let tiff = renderer.nsImage?.tiffRepresentation,
+           let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+            try? png.write(to: url.deletingPathExtension().appendingPathExtension("help.\(scheme == .dark ? "dark" : "light").png"))
+        }
+    }
     let glyphs = HStack(spacing: 24) {
         ForEach([EyeGlyph.Mood.awake, .attention, .resting], id: \.self) { mood in
             VStack(spacing: 10) {

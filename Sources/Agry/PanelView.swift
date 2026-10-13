@@ -130,7 +130,7 @@ private struct Chip: View {
 
 // MARK: Agents
 
-private struct SectionLabel: View {
+struct SectionLabel: View {
     var text: String
 
     var body: some View {
@@ -225,7 +225,7 @@ private struct AgentRowView: View {
     }
 }
 
-private struct StateDot: View {
+struct StateDot: View {
     let state: ProgramState
     let active: Bool
     @State private var pulse = false
@@ -374,6 +374,7 @@ private struct PillButton: View {
 private struct FooterView: View {
     let controller: Controller
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var showingHelp = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -381,6 +382,16 @@ private struct FooterView: View {
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.tertiary)
             Spacer()
+            Button {
+                showingHelp.toggle()
+            } label: {
+                Image(systemName: "info.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("What the colors and states mean")
+            .popover(isPresented: $showingHelp, arrowEdge: .leading) {
+                HelpView(config: controller.config, onAC: controller.onAC)
+            }
             Menu {
                 Toggle("Launch at Login", isOn: Binding(get: { launchAtLogin }, set: setLaunchAtLogin))
                 Divider()

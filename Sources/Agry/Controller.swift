@@ -45,6 +45,7 @@ final class Controller {
 
     var remotePIDs: Set<Int32> { Set(claudeSessions.filter(\.isRemote).map(\.pid)) }
     var hasManualHold: Bool { store.records[.manual] != nil }
+    var config: PolicyConfig { policy.config }
 
     init() {
         lidModeEnabled = UserDefaults.standard.bool(forKey: "lidClosedMode")
