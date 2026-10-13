@@ -82,7 +82,9 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
                 pid: record.ownerPID,
                 cwd: session?.cwd,
                 holdUntil: verdicts.compactMap(\.holdUntil).max(),
-                isRemote: verdicts.contains { $0.isRemote && $0.holdUntil != nil },
+                // The remote linger only applies once work stops, so working
+                // records never show it.
+                isRemote: verdicts.contains { $0.isRemote && $0.holdUntil != nil && $0.record.state != .working },
                 remoteControlEnabled: session?.isRemote ?? false,
                 isDismissed: record.isDismissed,
                 reason: primary.reason,

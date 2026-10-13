@@ -97,6 +97,14 @@ private func rows(_ verdicts: [RecordVerdict], sessions: [ClaudeSession] = []) -
         #expect(!rows([verdict(.rex(blockID: "b", recordID: ""), .done)])[0].isHoldingForWork)
     }
 
+    @Test func workingRowIsNotShownAsRemote() {
+        #expect(!rows([verdict(.rex(blockID: "b", recordID: ""), .working, remote: true)])[0].isRemote)
+    }
+
+    @Test func doneRowIsShownAsRemote() {
+        #expect(rows([verdict(.rex(blockID: "b", recordID: ""), .done, remote: true)])[0].isRemote)
+    }
+
     @Test func remoteControlFlagComesFromSession() {
         let result = rows([verdict(.rex(blockID: "b", recordID: ""), .working, pid: 42)],
                           sessions: [session(pid: 42, cwd: "/p/raydio")])
