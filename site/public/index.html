@@ -58,9 +58,10 @@
   dt { color: var(--faint); }
   dd { margin: 0; color: var(--dim); }
   .download { display: flex; align-items: center; gap: 12px; margin-top: 26px; font-size: 13px; }
-  .download a { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
+  .download > a { display: inline-flex; align-items: center; gap: 7px; font-weight: 500; }
   .download svg { width: 15px; height: 15px; }
   .download span { color: var(--faint); }
+  .download span a { color: var(--dim); }
   .rule { height: 1px; background: var(--hairline); margin: 28px 0 16px; border: 0; }
   footer { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--faint); }
   a { color: var(--fg); text-decoration: none; }
@@ -101,7 +102,7 @@
       </svg>
       Download for macOS
     </a>
-    <span>macOS 15 or later</span>
+    <span>Requires <a href="https://www.superlogical.com/rex">Rex</a></span>
   </div>
   <hr class="rule">
   <footer>
