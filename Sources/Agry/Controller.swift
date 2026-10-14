@@ -31,6 +31,7 @@ final class Controller {
     @ObservationIgnored let power = PowerMonitor()
     @ObservationIgnored let rex = RexMonitor()
     @ObservationIgnored private let claude = ClaudeSessionMonitor()
+    @ObservationIgnored let updater = Updater()
     @ObservationIgnored private let assertion = SleepAssertion()
     @ObservationIgnored private let lid: LidGuard
     @ObservationIgnored private var policy = Policy(config: .defaults, isAlive: isProcessAlive)

@@ -20,3 +20,7 @@ node_modules/
 .wrangler/
 .cloudflare/
 .vscode/
+
+# Release artifacts (published by scripts/release.sh)
+site/public/download/
+site/public/appcast.xml

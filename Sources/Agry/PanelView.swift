@@ -832,6 +832,11 @@ private struct FooterView: View {
                     Button("Remove Lid-Closed Support…") { Task { await controller.uninstallLidSupport() } }
                 }
                 Divider()
+                if controller.updater.isAvailable {
+                    Button("Check for Updates…") { controller.updater.checkForUpdates() }
+                }
+                Button("agry \(Updater.versionDescription)") {}.disabled(true)
+                Divider()
                 Button("Quit agry") { NSApp.terminate(nil) }
             } label: {
                 Image(systemName: "ellipsis")
