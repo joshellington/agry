@@ -13,8 +13,9 @@ swift build -c release --product Agry $arch
 bin="$(swift build -c release $arch --show-bin-path)"
 app=build/Agry.app
 rm -rf "$app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" "$app/Contents/Resources"
 cp "$bin/Agry" "$app/Contents/MacOS/Agry"
+cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
 ditto "$bin/Sparkle.framework" "$app/Contents/Frameworks/Sparkle.framework"
 # agry is not sandboxed, so Sparkle's XPC services are unused.
 rm -rf "$app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" \
@@ -29,6 +30,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>agry</string>
   <key>CFBundleExecutable</key><string>Agry</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$build</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
