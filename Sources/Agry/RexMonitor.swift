@@ -17,6 +17,8 @@ final class RexMonitor {
     var onLog: ((String) -> Void)?
     private(set) var isConnected = false
     private(set) var rexURL: URL?
+    /// From `rex version` at the last connect, for Copy State.
+    private(set) var versionSummary: String?
 
     private var watcher: LineProcess?
 
@@ -96,6 +98,7 @@ final class RexMonitor {
             retryDelay = 2
             onLog?("rex: connected")
             onUpdate?(.connected)
+            readVersion()
         case .statusChanged(let sessionID, let blockID, let status):
             onLog?("rex: \(blockID.suffix(6)) \(status.recordID.isEmpty ? "" : status.recordID + " ")\(status.app ?? "?") \(status.state.rawValue)\(status.kind.map { "/\($0)" } ?? "")")
             sessionBlocks[sessionID, default: []].insert(blockID)
@@ -112,6 +115,15 @@ final class RexMonitor {
             }
         case .sessionCreated:
             break
+        }
+    }
+
+    private func readVersion() {
+        guard let rexURL else { return }
+        Task {
+            let result = await runProcess(rexURL, ["version", "--autostart=false"])
+            versionSummary = RexParser.versionSummary(fromOutput: String(decoding: result.output, as: UTF8.self))
+            if let versionSummary { onLog?("rex: \(versionSummary)") }
         }
     }
 

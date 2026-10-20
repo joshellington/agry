@@ -24,6 +24,8 @@ public struct StatusRecord: Equatable, Sendable {
     public var title: String?
     public var kind: String?
     public var message: String?
+    /// 0–100 while working or blocked; nil when indeterminate.
+    public var progress: Int?
     public var ownerPID: Int32?
     /// When the record entered `state` (agry's clock). Repeated reports in the
     /// same state do not move it, so `done` timeouts run from the first `done`.
@@ -40,6 +42,7 @@ public struct StatusRecord: Equatable, Sendable {
         title: String? = nil,
         kind: String? = nil,
         message: String? = nil,
+        progress: Int? = nil,
         ownerPID: Int32? = nil,
         stateSince: Date,
         expiresAt: Date? = nil
@@ -50,6 +53,7 @@ public struct StatusRecord: Equatable, Sendable {
         self.title = title
         self.kind = kind
         self.message = message
+        self.progress = progress
         self.ownerPID = ownerPID
         self.stateSince = stateSince
         self.expiresAt = expiresAt

@@ -8,6 +8,8 @@ public struct RexStatus: Equatable, Sendable {
     public var title: String? = nil
     public var kind: String?
     public var message: String?
+    /// 0–100 on `working` and `blocked` records; nil when indeterminate.
+    public var progress: Int? = nil
     public var ownerPID: Int32?
     /// Rex's last-report time. Lets a snapshot taken at launch keep the age of
     /// an old `done` record instead of restarting its linger.
@@ -17,7 +19,7 @@ public struct RexStatus: Equatable, Sendable {
         StatusRecord(
             source: .rex(blockID: blockID, recordID: recordID),
             state: state, app: app, title: title, kind: kind, message: message,
-            ownerPID: ownerPID, stateSince: min(updatedAt ?? now, now))
+            progress: progress, ownerPID: ownerPID, stateSince: min(updatedAt ?? now, now))
     }
 }
 
@@ -80,6 +82,15 @@ public enum RexParser {
               let app = list.clients.first(where: { $0.info?.kind == "app" })
         else { return nil }
         return (app.client_id, app.principal?.pid)
+    }
+
+    /// "rex 0.0.1792508880-g4cd4e2, api revision 4 (supports 0 to 4)" from
+    /// `rex version`, for diagnostics.
+    public static func versionSummary(fromOutput output: String) -> String? {
+        let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        guard let version = lines.first(where: { $0.hasPrefix("rex ") }) else { return nil }
+        guard let api = lines.first(where: { $0.hasPrefix("api: ") }) else { return version }
+        return "\(version), api \(api.dropFirst("api: ".count))"
     }
 
     /// Rex timestamps: RFC 3339 with microseconds and a numeric offset.
@@ -152,6 +163,7 @@ public enum RexParser {
         var title: String?
         var kind: String?
         var msg: String?
+        var progress: Int?
         var owner: Owner?
         var updated_at: String?
 
@@ -165,9 +177,11 @@ public enum RexParser {
                 recordID: recordID ?? id ?? "",
                 state: state,
                 app: effective_app ?? app,
-                title: title,
+                title: title.map(DisplayText.sanitize),
                 kind: kind,
-                message: msg,
+                message: msg.map(DisplayText.sanitize),
+                // The spec allows progress only while working or blocked.
+                progress: [.working, .blocked].contains(state) ? progress.flatMap { (0...100).contains($0) ? $0 : nil } : nil,
                 ownerPID: owner?.pid,
                 updatedAt: updated_at.flatMap(RexParser.parseDate))
         }

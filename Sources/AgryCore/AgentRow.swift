@@ -21,6 +21,7 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
         public var id: String
         public var title: String
         public var state: ProgramState
+        public var progress: Int?
         public var holdUntil: Date?
     }
 
@@ -31,6 +32,7 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
     public var state: ProgramState
     public var kind: String?
     public var message: String?
+    public var progress: Int?
     /// When the row's main record entered its state.
     public var since: Date
     public var pid: Int32?
@@ -78,6 +80,7 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
                 state: record.state,
                 kind: record.kind,
                 message: record.message ?? record.title,
+                progress: record.progress,
                 since: record.stateSince,
                 pid: record.ownerPID,
                 cwd: session?.cwd,
@@ -92,6 +95,7 @@ public struct AgentRow: Identifiable, Equatable, Sendable {
                     Child(id: "\(child.record.source)",
                           title: child.record.title ?? child.record.app ?? "task",
                           state: child.record.state,
+                          progress: child.record.progress,
                           holdUntil: child.holdUntil)
                 },
                 sources: verdicts.map(\.record.source))

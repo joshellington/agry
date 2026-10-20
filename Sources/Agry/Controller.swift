@@ -282,6 +282,7 @@ final class Controller {
             "onAC: \(onAC)  battery: \(batteryPercent.map { "\($0)%" } ?? "-")  thermal: \(thermal)  lidClosed: \(lidClosed)",
             "lid: \(lidVerdict)  installed: \(lidInstalled)  armed: \(lid.isArmed)",
             "rex: \(rexConnected) \(rex.rexURL?.path ?? "-")",
+            "rex version: \(rex.versionSummary ?? "-")",
             "remotePIDs: \(remotePIDs.sorted())",
             "nextDeadline: \(decision.nextDeadline.map { "\($0)" } ?? "-")",
             "records:",

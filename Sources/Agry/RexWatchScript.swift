@@ -3,26 +3,29 @@
 /// prints events as JSON lines in the same envelope `rex events --json` uses.
 let rexWatchScript = #"""
 local TERMINAL = "com.superlogical.terminal"
-local escapes = { ['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t' }
-
-local function enc(v)
-  local t = type(v)
-  if t == "string" then
-    return '"' .. (v:gsub('[%c"\\]', function(c) return escapes[c] or string.format("\\u%04x", c:byte()) end)) .. '"'
-  elseif t == "number" then
-    return string.format("%.14g", v)
-  elseif t == "boolean" then
-    return tostring(v)
-  elseif t == "table" then
-    local parts = {}
-    if #v > 0 then
-      for _, item in ipairs(v) do parts[#parts + 1] = enc(item) end
-      return "[" .. table.concat(parts, ",") .. "]"
+-- Rex 0.1.0-preview.15 added rex.json; older servers get this small encoder.
+local enc = rex.json and rex.json.encode
+if not enc then
+  local escapes = { ['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t' }
+  enc = function(v)
+    local t = type(v)
+    if t == "string" then
+      return '"' .. (v:gsub('[%c"\\]', function(c) return escapes[c] or string.format("\\u%04x", c:byte()) end)) .. '"'
+    elseif t == "number" then
+      return string.format("%.14g", v)
+    elseif t == "boolean" then
+      return tostring(v)
+    elseif t == "table" then
+      local parts = {}
+      if #v > 0 then
+        for _, item in ipairs(v) do parts[#parts + 1] = enc(item) end
+        return "[" .. table.concat(parts, ",") .. "]"
+      end
+      for k, item in pairs(v) do parts[#parts + 1] = enc(tostring(k)) .. ":" .. enc(item) end
+      return "{" .. table.concat(parts, ",") .. "}"
     end
-    for k, item in pairs(v) do parts[#parts + 1] = enc(tostring(k)) .. ":" .. enc(item) end
-    return "{" .. table.concat(parts, ",") .. "}"
+    return "null"
   end
-  return "null"
 end
 
 local function line(s)

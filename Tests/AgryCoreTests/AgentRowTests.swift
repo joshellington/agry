@@ -28,6 +28,15 @@ private func rows(_ verdicts: [RecordVerdict], sessions: [ClaudeSession] = []) -
         #expect(result[0].childTitles == ["Playback engine"])
     }
 
+    @Test func progressComesFromRootAndChildren() {
+        var root = verdict(.rex(blockID: "b", recordID: ""), .working)
+        root.record.progress = 40
+        var child = verdict(.rex(blockID: "b", recordID: "a1"), .working, title: "child")
+        child.record.progress = 7
+        let result = rows([root, child])
+        #expect(result[0].progress == 40 && result[0].children[0].progress == 7)
+    }
+
     @Test func rowUsesRootRecordState() {
         let result = rows([
             verdict(.rex(blockID: "b", recordID: "a1"), .working, title: "child"),

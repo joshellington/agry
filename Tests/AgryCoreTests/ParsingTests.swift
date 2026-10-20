@@ -51,6 +51,36 @@ private enum Fixture {
         #expect(RexParser.snapshot(fromJSON: Data(json.utf8)).first?.title == "Native playback engine")
     }
 
+    @Test func progressOnWorkingRecord() {
+        let json = #"{"records":[{"state":"working","progress":42,"app":"probe"}]}"#
+        #expect(RexParser.snapshot(fromJSON: Data(json.utf8)).first?.progress == 42)
+    }
+
+    @Test(arguments: [
+        #"{"records":[{"state":"done","progress":42}]}"#,
+        #"{"records":[{"state":"working","progress":101}]}"#,
+        #"{"records":[{"state":"working","progress":-1}]}"#,
+        #"{"records":[{"state":"working"}]}"#,
+    ])
+    func progressIgnoredWhenNotApplicable(_ json: String) {
+        #expect(RexParser.snapshot(fromJSON: Data(json.utf8)).first?.progress == nil)
+    }
+
+    @Test func messageAndTitleAreSanitized() {
+        let json = #"{"records":[{"state":"working","msg":"hi‮evil","title":"a​b"}]}"#
+        let status = RexParser.snapshot(fromJSON: Data(json.utf8)).first
+        #expect(status?.message == "hievil" && status?.title == "ab")
+    }
+
+    @Test func versionSummary() {
+        let output = "rex 0.0.1792508880-g4cd4e2\ncommit: 4cd4e2c\nbuilt: 2026-10-20T15:08:00Z\napi: revision 4 (supports 0 to 4)\n"
+        #expect(RexParser.versionSummary(fromOutput: output) == "rex 0.0.1792508880-g4cd4e2, api revision 4 (supports 0 to 4)")
+    }
+
+    @Test func versionSummaryWithoutAPILine() {
+        #expect(RexParser.versionSummary(fromOutput: "rex 0.0.1791811459-ga601bc\ncommit: a601bcd\n") == "rex 0.0.1791811459-ga601bc")
+    }
+
     @Test func statusRemoved() {
         #expect(RexParser.event(fromLine: Fixture.removed) == .statusRemoved(sessionID: "session:S", blockID: "block:B", recordIDs: ["sub"]))
     }

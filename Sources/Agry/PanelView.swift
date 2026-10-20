@@ -227,7 +227,7 @@ private struct AgentRowView: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            StatusMark(state: row.state, holding: row.holdUntil != nil)
+            StatusMark(state: row.state, holding: row.holdUntil != nil, progress: row.progress)
                 .frame(width: 12)
                 .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
             VStack(alignment: .leading, spacing: 2) {
@@ -287,16 +287,24 @@ private struct StatusLine: View {
     }
 }
 
-/// The shape of a state: spinning arc, amber diamond, check, cross, ring.
+/// The shape of a state: spinning arc (or a filling ring when the program
+/// reports progress), amber diamond, check, cross, ring.
 struct StatusMark: View {
     let state: ProgramState
     var holding = true
+    var progress: Int? = nil
 
     var body: some View {
         Group {
             switch state {
             case .working:
-                if holding { Spinner() } else { ring }
+                if !holding {
+                    ring
+                } else if let progress {
+                    ProgressRing(progress: progress)
+                } else {
+                    Spinner()
+                }
             case .blocked:
                 Image(systemName: "diamond.fill")
                     .font(.system(size: 8.5, weight: .bold))
@@ -318,6 +326,24 @@ struct StatusMark: View {
 
     private var ring: some View {
         Circle().strokeBorder(.tertiary, lineWidth: 1.2).frame(width: 8, height: 8)
+    }
+}
+
+/// A determinate spinner: a faint track filled clockwise from the top.
+private struct ProgressRing: View {
+    let progress: Int
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(.tertiary, lineWidth: 1.5)
+            Circle()
+                .trim(from: 0, to: CGFloat(progress) / 100)
+                .stroke(.primary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 9, height: 9)
+        .animation(.easeOut(duration: 0.3), value: progress)
+        .help("\(progress)%")
     }
 }
 
@@ -398,7 +424,7 @@ private struct AgentDetailPage: View {
                 .buttonStyle(.plain)
 
                 HStack(alignment: .center, spacing: 9) {
-                    StatusMark(state: row.state, holding: row.holdUntil != nil)
+                    StatusMark(state: row.state, holding: row.holdUntil != nil, progress: row.progress)
                     Text(row.name).font(.system(size: 15, weight: .semibold)).lineLimit(1)
                     if row.isRemote { RemoteMark() }
                     Spacer(minLength: 4)
@@ -425,6 +451,7 @@ private struct AgentDetailPage: View {
 
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 6) {
                     fact("State", "\(Theme.label(row.state, kind: row.kind)) for \(Theme.duration(row.since, now))")
+                    if let progress = row.progress { fact("Progress", "\(progress)%") }
                     fact("Holding", holding(now))
                     fact("Remote", remote)
                     if let cwd = row.cwd { fact("Project", (cwd as NSString).abbreviatingWithTildeInPath) }
@@ -436,10 +463,10 @@ private struct AgentDetailPage: View {
                         Text("Subagents").font(.system(size: 11)).foregroundStyle(.tertiary)
                         ForEach(row.children) { child in
                             HStack(spacing: 8) {
-                                StatusMark(state: child.state, holding: child.holdUntil != nil)
+                                StatusMark(state: child.state, holding: child.holdUntil != nil, progress: child.progress)
                                 Text(child.title).font(.system(size: 12)).lineLimit(1)
                                 Spacer(minLength: 4)
-                                Text(Theme.label(child.state, kind: nil))
+                                Text(Theme.label(child.state, kind: nil) + (child.progress.map { " · \($0)%" } ?? ""))
                                     .font(.system(size: 11))
                                     .foregroundStyle(.tertiary)
                             }
