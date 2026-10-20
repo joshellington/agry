@@ -63,17 +63,19 @@ final class RexMonitor {
     private var retryDelay: TimeInterval = 2
 
     func start() {
-        guard let url = RexMonitor.locateRex() else {
-            onLog?("rex: binary not found; retrying in 30s")
-            schedule(after: 30) { $0.start() }
-            return
-        }
-        rexURL = url
         connect()
     }
 
+    /// Locates `rex` afresh on every attempt: Rex can swap its server build
+    /// (and so the binary's path) while agry runs.
     private func connect() {
-        guard let rexURL else { return }
+        guard let rexURL = RexMonitor.locateRex() else {
+            onLog?("rex: binary not found; retrying in 30s")
+            schedule(after: 30) { $0.connect() }
+            return
+        }
+        if rexURL != self.rexURL { onLog?("rex: using \(rexURL.path)") }
+        self.rexURL = rexURL
         let process = LineProcess(executable: rexURL, arguments: ["do", "--all", "--autostart=false", "-e", rexWatchScript])
         process.onLine = { [weak self] line in self?.handle(line) }
         process.onExit = { [weak self] status in self?.watcherExited(status) }
@@ -141,19 +143,14 @@ final class RexMonitor {
         }
     }
 
-    /// GUI apps do not inherit the shell PATH, so look in the usual places.
     static func locateRex() -> URL? {
         let fm = FileManager.default
-        var candidates: [String] = []
-        if let override = ProcessInfo.processInfo.environment["AGRY_REX"] { candidates.append(override) }
-        for app in ["Rex Beta.app", "Rex.app"] {
-            candidates.append("/Applications/\(app)/Contents/Helpers/Rex Server.app/Contents/MacOS/rex")
-        }
-        candidates += [
-            "\(NSHomeDirectory())/.local/bin/rex",
-            "/opt/homebrew/bin/rex",
-            "/usr/local/bin/rex",
-        ]
+        let home = NSHomeDirectory()
+        let versionNames = (try? fm.contentsOfDirectory(atPath: RexLocator.versionsDirectory(home: home))) ?? []
+        let candidates = RexLocator.candidates(
+            home: home,
+            override: ProcessInfo.processInfo.environment["AGRY_REX"],
+            versionNames: versionNames)
         return candidates.first { fm.isExecutableFile(atPath: $0) }.map(URL.init(fileURLWithPath:))
     }
 }
