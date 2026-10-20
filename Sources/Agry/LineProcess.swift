@@ -27,12 +27,22 @@ final class LineProcess: @unchecked Sendable {
         }
         process.terminationHandler = { [weak self] process in
             stdout.fileHandleForReading.readabilityHandler = nil
+            try? stdout.fileHandleForReading.close()
             let status = process.terminationStatus
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.onExit?(status) }
             }
         }
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            // The readability handler keeps the pipe open until it is cleared,
+            // so a failed launch would otherwise leak both ends.
+            stdout.fileHandleForReading.readabilityHandler = nil
+            try? stdout.fileHandleForReading.close()
+            try? stdout.fileHandleForWriting.close()
+            throw error
+        }
     }
 
     func stop() {
