@@ -10,14 +10,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also right when launched as a bare executable (no LSUIElement).
         NSApp.setActivationPolicy(.accessory)
-        // Dev aid: shows the settings window and writes help snapshots without
+        // Dev aid: shows the settings window and writes panel snapshots without
         // starting the monitors, so it can't touch the running agry's sleep state.
         if let path = ProcessInfo.processInfo.environment["AGRY_PREVIEW"] {
             controller.startPreview()
             controller.reloadConfig()
             previewWindows = [
-                AppWindow(title: "agry Settings") { [controller] in SettingsView(controller: controller) },
-                AppWindow(title: "How agry works") { [controller] in HelpView(controller: controller) },
+                AppWindow(title: "agry Settings") { [controller] in SettingsView(controller: controller, allowsScrolling: false) },
             ]
             previewWindows.forEach { $0.show() }
             renderSnapshot(controller: controller, to: URL(fileURLWithPath: path))
@@ -80,17 +79,6 @@ private func renderSnapshot(controller: Controller, to url: URL) {
         else { continue }
         let target = url.deletingPathExtension().appendingPathExtension("\(scheme == .dark ? "dark" : "light").png")
         try? png.write(to: target)
-    }
-    for scheme in [ColorScheme.light, .dark] {
-        let help = HelpView(controller: controller)
-            .background(Color(white: 0.11))
-            .environment(\.colorScheme, scheme)
-        let renderer = ImageRenderer(content: help)
-        renderer.scale = 2
-        if let tiff = renderer.nsImage?.tiffRepresentation,
-           let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
-            try? png.write(to: url.deletingPathExtension().appendingPathExtension("help.\(scheme == .dark ? "dark" : "light").png"))
-        }
     }
     let glyphs = HStack(spacing: 24) {
         ForEach([EyeGlyph.Mood.awake, .attention, .resting], id: \.self) { mood in

@@ -10,7 +10,6 @@ final class PanelNavigation {
     var selected: String?
     var keepAwakeOpen = false
     @ObservationIgnored var openSettings: () -> Void = {}
-    @ObservationIgnored var openHelp: () -> Void = {}
 }
 
 /// The menu bar icon and its panel.
@@ -29,23 +28,17 @@ final class StatusItemController: NSObject {
     private var outsideClickMonitor: Any?
     private var keyMonitor: Any?
     private let settings: AppWindow
-    private let help: AppWindow
 
     init(controller: Controller) {
         self.controller = controller
         hosting = SizeReportingHostingView(rootView: AnyView(EmptyView()))
         panel = AgryPanel(contentRect: NSRect(x: 0, y: 0, width: Theme.width, height: 400))
         settings = AppWindow(title: "agry Settings") { SettingsView(controller: controller) }
-        help = AppWindow(title: "How agry works") { HelpView(controller: controller) }
         super.init()
         navigation.openSettings = { [weak self, controller] in
             self?.closePanel()
             controller.reloadConfig()
             self?.settings.show()
-        }
-        navigation.openHelp = { [weak self] in
-            self?.closePanel()
-            self?.help.show()
         }
 
         hosting.rootView = AnyView(PanelView(controller: controller, navigation: navigation))

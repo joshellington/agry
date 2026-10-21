@@ -724,7 +724,7 @@ private struct LidRow: View {
                 .disabled(installing)
             }
         }
-        .help("With the lid closed and no display on, macOS sleeps right away. This keeps the Mac awake while agents need it, then lets it sleep. See ? for details.")
+        .help("With the lid closed and no display on, macOS sleeps right away. This keeps the Mac awake while agents need it, then lets it sleep. More in Settings.")
     }
 
     private var statusLine: (String, Tone) {
@@ -838,12 +838,9 @@ private struct FooterView: View {
                 }
             }
             Spacer()
-            FooterButton(symbol: "questionmark.circle", title: nil, active: false) { navigation.openHelp() }
-                .help("How agry works")
+            FooterButton(symbol: "gearshape", title: nil, active: false) { navigation.openSettings() }
+                .help("Settings, and how agry works")
             Menu {
-                Button("Settings…") { navigation.openSettings() }
-                    .keyboardShortcut(",")
-                Divider()
                 Button("Open Event Log") { NSWorkspace.shared.open(controller.debugDirectory.appending(path: "events.log")) }
                 Button("Copy State") {
                     NSPasteboard.general.clearContents()
