@@ -5,7 +5,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = Controller()
     private var statusItem: StatusItemController?
-    private var previewSettings: SettingsWindowController?
+    private var previewWindows: [AppWindow] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also right when launched as a bare executable (no LSUIElement).
@@ -14,8 +14,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // starting the monitors, so it can't touch the running agry's sleep state.
         if let path = ProcessInfo.processInfo.environment["AGRY_PREVIEW"] {
             controller.startPreview()
-            previewSettings = SettingsWindowController(controller: controller)
-            previewSettings?.show()
+            controller.reloadConfig()
+            previewWindows = [
+                AppWindow(title: "agry Settings") { [controller] in SettingsView(controller: controller) },
+                AppWindow(title: "How agry works") { [controller] in HelpView(controller: controller) },
+            ]
+            previewWindows.forEach { $0.show() }
             renderSnapshot(controller: controller, to: URL(fileURLWithPath: path))
             return
         }
@@ -78,7 +82,7 @@ private func renderSnapshot(controller: Controller, to url: URL) {
         try? png.write(to: target)
     }
     for scheme in [ColorScheme.light, .dark] {
-        let help = HelpView(config: controller.config, onAC: controller.onAC, systemNeverSleeps: controller.systemNeverSleeps)
+        let help = HelpView(controller: controller)
             .background(Color(white: 0.11))
             .environment(\.colorScheme, scheme)
         let renderer = ImageRenderer(content: help)

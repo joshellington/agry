@@ -3,29 +3,30 @@ import AppKit
 import ServiceManagement
 import SwiftUI
 
-/// The settings window. agry is a menu bar accessory, so it activates itself
-/// to bring the window forward and keeps one window for the app's lifetime.
+/// A plain titled window for Settings and Help. agry is a menu bar accessory,
+/// so it activates itself to bring the window forward, and keeps one window
+/// per kind for the app's lifetime.
 @MainActor
-final class SettingsWindowController {
-    private let controller: Controller
+final class AppWindow {
+    private let title: String
+    private let makeContent: () -> AnyView
     private var window: NSWindow?
 
-    init(controller: Controller) {
-        self.controller = controller
+    init(title: String, @ViewBuilder content: @escaping () -> some View) {
+        self.title = title
+        makeContent = { AnyView(content()) }
     }
 
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: SettingsView(controller: controller))
-            let window = NSWindow(contentViewController: hosting)
-            window.title = "agry Settings"
+            let window = NSWindow(contentViewController: NSHostingController(rootView: makeContent()))
+            window.title = title
             window.styleMask = [.titled, .closable]
             window.appearance = NSAppearance(named: .darkAqua)
             window.isReleasedWhenClosed = false
             window.center()
             self.window = window
         }
-        controller.reloadConfig()
         NSApp.activate()
         window?.makeKeyAndOrderFront(nil)
     }

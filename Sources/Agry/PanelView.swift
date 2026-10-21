@@ -829,7 +829,6 @@ private struct InkSwitchStyle: ToggleStyle {
 private struct FooterView: View {
     let controller: Controller
     let navigation: PanelNavigation
-    @State private var showingHelp = false
 
     var body: some View {
         HStack(spacing: 2) {
@@ -839,11 +838,8 @@ private struct FooterView: View {
                 }
             }
             Spacer()
-            FooterButton(symbol: "questionmark.circle", title: nil, active: showingHelp) { showingHelp.toggle() }
-                .help("What the marks mean")
-                .popover(isPresented: $showingHelp, arrowEdge: .leading) {
-                    HelpView(config: controller.config, onAC: controller.onAC, systemNeverSleeps: controller.systemNeverSleeps)
-                }
+            FooterButton(symbol: "questionmark.circle", title: nil, active: false) { navigation.openHelp() }
+                .help("How agry works")
             Menu {
                 Button("Settings…") { navigation.openSettings() }
                     .keyboardShortcut(",")
