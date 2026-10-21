@@ -9,6 +9,7 @@ import SwiftUI
 final class PanelNavigation {
     var selected: String?
     var keepAwakeOpen = false
+    @ObservationIgnored var openSettings: () -> Void = {}
 }
 
 /// The menu bar icon and its panel.
@@ -26,12 +27,18 @@ final class StatusItemController: NSObject {
     private let hosting: SizeReportingHostingView<AnyView>
     private var outsideClickMonitor: Any?
     private var keyMonitor: Any?
+    private let settings: SettingsWindowController
 
     init(controller: Controller) {
         self.controller = controller
         hosting = SizeReportingHostingView(rootView: AnyView(EmptyView()))
         panel = AgryPanel(contentRect: NSRect(x: 0, y: 0, width: Theme.width, height: 400))
+        settings = SettingsWindowController(controller: controller)
         super.init()
+        navigation.openSettings = { [weak self] in
+            self?.closePanel()
+            self?.settings.show()
+        }
 
         hosting.rootView = AnyView(PanelView(controller: controller, navigation: navigation))
         hosting.onFittingSizeChange = { [weak self] in self?.fitPanel() }

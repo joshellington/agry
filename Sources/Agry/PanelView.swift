@@ -1,5 +1,4 @@
 import AgryCore
-import ServiceManagement
 import SwiftUI
 
 /// Visual language ("nocturnal instrument"): always dark, monochrome by
@@ -149,7 +148,7 @@ private struct HeaderView: View {
             return "Sleep allowed after \(Theme.time(until))"
         }
         if controller.manualHold != nil { return "Kept awake by you" }
-        return "Sleep works as usual"
+        return controller.systemNeverSleeps ? "Not holding; macOS is set never to sleep" : "Sleep works as usual"
     }
 }
 
@@ -685,7 +684,7 @@ private struct StepSlider: View {
     }
 }
 
-// MARK: Lid closed
+// MARK: Stay awake when closed
 
 private struct LidRow: View {
     let controller: Controller
@@ -702,7 +701,7 @@ private struct LidRow: View {
                 .foregroundStyle(color(tone, fallback: .secondary))
                 .frame(width: 14)
             VStack(alignment: .leading, spacing: 1) {
-                Text(controller.lidInstalled ? "Lid closed" : "Stay awake with the lid closed")
+                Text("Stay awake when closed")
                     .font(.system(size: 12))
                 Text(status)
                     .font(.system(size: 11))
@@ -710,7 +709,7 @@ private struct LidRow: View {
             }
             Spacer()
             if controller.lidInstalled {
-                Toggle("Lid-closed mode", isOn: Binding(
+                Toggle("Stay awake when closed", isOn: Binding(
                     get: { controller.lidModeEnabled },
                     set: { controller.lidModeEnabled = $0 }))
                     .toggleStyle(InkSwitchStyle())
@@ -725,16 +724,19 @@ private struct LidRow: View {
                 .disabled(installing)
             }
         }
-        .help("Keeps the Mac awake when you close the lid, only while agents need it and it's safe. See ? for details.")
+        .help("With the lid closed and no display on, macOS sleeps right away. This keeps the Mac awake while agents need it, then lets it sleep. See ? for details.")
     }
 
     private var statusLine: (String, Tone) {
-        guard controller.lidInstalled else { return ("One-time setup, asks for your password", .quiet) }
+        guard controller.lidInstalled else { return ("One-time setup; asks for your password", .quiet) }
         switch controller.lidVerdict {
         case .armed:
-            return controller.lidClosed ? ("Closed, and staying awake", .ready) : ("Safe to close; agents keep running", .ready)
+            if !controller.lidClosed { return ("Close it anytime; agents keep running", .ready) }
+            return controller.externalDisplay
+                ? ("Closed; awake even if the display goes off", .ready)
+                : ("Closed; awake for your agents", .ready)
         case .disarmed(.off):
-            return ("Off; closing the lid sleeps the Mac", .quiet)
+            return ("Off; with no display on, the Mac sleeps", .quiet)
         case .disarmed(.nothingToHold):
             return ("Ready when an agent is working", .quiet)
         case .disarmed(.tooWarm):
@@ -817,7 +819,7 @@ private struct InkSwitchStyle: ToggleStyle {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Lid-closed mode")
+        .accessibilityLabel("Stay awake when closed")
         .accessibilityValue(configuration.isOn ? "On" : "Off")
     }
 }
@@ -827,7 +829,6 @@ private struct InkSwitchStyle: ToggleStyle {
 private struct FooterView: View {
     let controller: Controller
     let navigation: PanelNavigation
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var showingHelp = false
 
     var body: some View {
@@ -841,22 +842,16 @@ private struct FooterView: View {
             FooterButton(symbol: "questionmark.circle", title: nil, active: showingHelp) { showingHelp.toggle() }
                 .help("What the marks mean")
                 .popover(isPresented: $showingHelp, arrowEdge: .leading) {
-                    HelpView(config: controller.config, onAC: controller.onAC)
+                    HelpView(config: controller.config, onAC: controller.onAC, systemNeverSleeps: controller.systemNeverSleeps)
                 }
             Menu {
-                Toggle("Launch at Login", isOn: Binding(get: { launchAtLogin }, set: setLaunchAtLogin))
-                Divider()
-                Button("Edit Config…") { NSWorkspace.shared.open(controller.configURL) }
-                Button("Reload Config") { controller.reloadConfig() }
+                Button("Settings…") { navigation.openSettings() }
+                    .keyboardShortcut(",")
                 Divider()
                 Button("Open Event Log") { NSWorkspace.shared.open(controller.debugDirectory.appending(path: "events.log")) }
                 Button("Copy State") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(controller.stateDescription(), forType: .string)
-                }
-                if controller.lidInstalled {
-                    Divider()
-                    Button("Remove Lid-Closed Support…") { Task { await controller.uninstallLidSupport() } }
                 }
                 Divider()
                 if controller.updater.isAvailable {
@@ -876,15 +871,6 @@ private struct FooterView: View {
             .fixedSize()
             .foregroundStyle(.secondary)
         }
-    }
-
-    private func setLaunchAtLogin(_ enabled: Bool) {
-        do {
-            if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
-        } catch {
-            controller.note("launch at login failed: \(error)")
-        }
-        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 }
 

@@ -59,6 +59,15 @@ public enum LidPolicy {
         let remoteHold = decision.verdicts.contains { $0.isRemote && $0.holdUntil != nil }
         return remoteHold ? .armed : .disarmed(.batteryNotRemote)
     }
+
+    /// macOS sleeps a closed Mac only at the moment the lid closes or its last
+    /// display goes away. If agry kept it awake through that moment, nothing
+    /// sleeps it later, so agry does once it lets go. `clamshellCausesSleep`
+    /// is the kernel's own view, which keeps counting a display that is on
+    /// another input; `externalDisplay` double-checks it.
+    public static func shouldSleepAfterDisarm(lidClosed: Bool, clamshellCausesSleep: Bool, externalDisplay: Bool) -> Bool {
+        lidClosed && clamshellCausesSleep && !externalDisplay
+    }
 }
 
 /// Reads the system's actual disablesleep flag from `pmset -g` output, so a
@@ -69,6 +78,15 @@ public enum PmsetOutput {
         for line in output.split(separator: "\n") {
             let fields = line.split(whereSeparator: \.isWhitespace)
             if fields.count >= 2, fields[0] == "SleepDisabled" { return fields[1] == "1" }
+        }
+        return nil
+    }
+
+    /// The idle sleep timer in use, in minutes: `sleep 1` → 1, `sleep 0` (never) → 0.
+    public static func systemSleepMinutes(from output: String) -> Int? {
+        for line in output.split(separator: "\n") {
+            let fields = line.split(whereSeparator: \.isWhitespace)
+            if fields.count >= 2, fields[0] == "sleep" { return Int(fields[1]) }
         }
         return nil
     }

@@ -45,18 +45,8 @@ final class LidGuard {
 
     /// Re-applies the flag if something else cleared it while agry has it armed
     /// (another keep-awake tool exiting, for example, resets it to 0).
-    func reassertIfCleared() {
-        guard isArmed, isInstalled else { return }
-        let pmset = Process()
-        let pipe = Pipe()
-        pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
-        pmset.arguments = ["-g"]
-        pmset.standardOutput = pipe
-        pmset.standardError = FileHandle.nullDevice
-        guard (try? pmset.run()) != nil else { return }
-        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        pmset.waitUntilExit()
-        guard PmsetOutput.sleepDisabled(from: output) == false else { return }
+    func reassertIfCleared(pmsetOutput output: String) {
+        guard isArmed, isInstalled, PmsetOutput.sleepDisabled(from: output) == false else { return }
         let ok = LidGuard.runPmset(true)
         onLog?("lid: disablesleep was cleared by something else; re-applied \(ok ? "ok" : "FAILED")")
     }

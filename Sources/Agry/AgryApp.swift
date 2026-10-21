@@ -5,10 +5,20 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let controller = Controller()
     private var statusItem: StatusItemController?
+    private var previewSettings: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Also right when launched as a bare executable (no LSUIElement).
         NSApp.setActivationPolicy(.accessory)
+        // Dev aid: shows the settings window and writes help snapshots without
+        // starting the monitors, so it can't touch the running agry's sleep state.
+        if let path = ProcessInfo.processInfo.environment["AGRY_PREVIEW"] {
+            controller.startPreview()
+            previewSettings = SettingsWindowController(controller: controller)
+            previewSettings?.show()
+            renderSnapshot(controller: controller, to: URL(fileURLWithPath: path))
+            return
+        }
         controller.start()
         let statusItem = StatusItemController(controller: controller)
         self.statusItem = statusItem
@@ -68,7 +78,7 @@ private func renderSnapshot(controller: Controller, to url: URL) {
         try? png.write(to: target)
     }
     for scheme in [ColorScheme.light, .dark] {
-        let help = HelpView(config: controller.config, onAC: controller.onAC)
+        let help = HelpView(config: controller.config, onAC: controller.onAC, systemNeverSleeps: controller.systemNeverSleeps)
             .background(Color(white: 0.11))
             .environment(\.colorScheme, scheme)
         let renderer = ImageRenderer(content: help)

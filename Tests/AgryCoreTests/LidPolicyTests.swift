@@ -49,6 +49,30 @@ private func context(enabled: Bool = true, onAC: Bool = true, battery: Int? = 80
     }
 }
 
+@Suite struct SleepAfterDisarmTests {
+    @Test func sleepsWhenClosedWithNoDisplay() {
+        #expect(LidPolicy.shouldSleepAfterDisarm(lidClosed: true, clamshellCausesSleep: true, externalDisplay: false))
+    }
+
+    @Test func staysAwakeWithLidOpen() {
+        #expect(!LidPolicy.shouldSleepAfterDisarm(lidClosed: false, clamshellCausesSleep: false, externalDisplay: false))
+    }
+
+    @Test func staysAwakeWhenDocked() {
+        #expect(!LidPolicy.shouldSleepAfterDisarm(lidClosed: true, clamshellCausesSleep: false, externalDisplay: true))
+    }
+
+    /// A display on another input can drop out for a moment while macOS still
+    /// counts it as attached.
+    @Test func staysAwakeWhenMacOSStillCountsTheDisplay() {
+        #expect(!LidPolicy.shouldSleepAfterDisarm(lidClosed: true, clamshellCausesSleep: false, externalDisplay: false))
+    }
+
+    @Test func staysAwakeWhileAnExternalDisplayIsOnline() {
+        #expect(!LidPolicy.shouldSleepAfterDisarm(lidClosed: true, clamshellCausesSleep: true, externalDisplay: true))
+    }
+}
+
 @Suite struct PmsetOutputTests {
     private let header = "System-wide power settings:\n"
 
@@ -62,5 +86,18 @@ private func context(enabled: Bool = true, onAC: Bool = true, battery: Int? = 80
 
     @Test func missingFlagIsUnknown() {
         #expect(PmsetOutput.sleepDisabled(from: "Currently in use:\n sleep 0\n") == nil)
+    }
+
+    @Test func readsSystemSleepTimer() {
+        #expect(PmsetOutput.systemSleepMinutes(from: "Currently in use:\n displaysleep 60\n sleep                 1\n") == 1)
+    }
+
+    @Test func neverSleepReadsAsZero() {
+        let output = "Currently in use:\n sleep                0 (sleep prevented by powerd, Agry)\n disksleep 0\n"
+        #expect(PmsetOutput.systemSleepMinutes(from: output) == 0)
+    }
+
+    @Test func missingSleepTimerIsUnknown() {
+        #expect(PmsetOutput.systemSleepMinutes(from: "Currently in use:\n displaysleep 60\n") == nil)
     }
 }

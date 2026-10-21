@@ -101,11 +101,49 @@ func lastLocalInput(now: Date = Date()) -> Date {
 }
 
 /// True when the built-in display's lid is closed.
-func isLidClosed() -> Bool {
+func isLidClosed() -> Bool { rootDomainFlag("AppleClamshellState") }
+
+/// True when macOS would sleep the Mac for a closed lid right now: not in
+/// desktop mode with an external display, and `disablesleep` is not set.
+func clamshellCausesSleep() -> Bool { rootDomainFlag("AppleClamshellCausesSleep") }
+
+private func rootDomainFlag(_ key: String) -> Bool {
     let rootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
     guard rootDomain != 0 else { return false }
     defer { IOObjectRelease(rootDomain) }
-    let value = IORegistryEntryCreateCFProperty(rootDomain, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?
+    let value = IORegistryEntryCreateCFProperty(rootDomain, key as CFString, kCFAllocatorDefault, 0)?
         .takeRetainedValue()
     return (value as? Bool) ?? false
+}
+
+/// True when a display other than the built-in one is online.
+func hasExternalDisplay() -> Bool {
+    var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+    var count: UInt32 = 0
+    guard CGGetOnlineDisplayList(UInt32(ids.count), &ids, &count) == .success else { return false }
+    return ids.prefix(Int(count)).contains { CGDisplayIsBuiltin($0) == 0 }
+}
+
+/// `pmset -g`: the settings in use for the current power source.
+func readPmsetSettings() -> String? {
+    let pmset = Process()
+    let pipe = Pipe()
+    pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+    pmset.arguments = ["-g"]
+    pmset.standardOutput = pipe
+    pmset.standardError = FileHandle.nullDevice
+    guard (try? pmset.run()) != nil else { return nil }
+    let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    pmset.waitUntilExit()
+    return output
+}
+
+/// Puts the Mac to sleep now. Needs no admin rights.
+func sleepNow() {
+    let pmset = Process()
+    pmset.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+    pmset.arguments = ["sleepnow"]
+    pmset.standardOutput = FileHandle.nullDevice
+    pmset.standardError = FileHandle.nullDevice
+    try? pmset.run()
 }

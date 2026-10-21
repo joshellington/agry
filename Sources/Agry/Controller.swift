@@ -13,6 +13,10 @@ final class Controller {
     private(set) var rows: [AgentRow] = []
     private(set) var lidVerdict = LidVerdict.disarmed(.off)
     private(set) var lidClosed = isLidClosed()
+    private(set) var externalDisplay = hasExternalDisplay()
+    /// macOS's own idle sleep is off for the current power source, so it stays
+    /// awake whatever agry does (System Settings › Battery › Options).
+    private(set) var systemNeverSleeps = false
     private(set) var thermal = ThermalLevel.nominal
     private(set) var onAC = true
     private(set) var batteryPercent: Int?
@@ -23,7 +27,7 @@ final class Controller {
     var lidModeEnabled: Bool {
         didSet {
             UserDefaults.standard.set(lidModeEnabled, forKey: "lidClosedMode")
-            note("lid-closed mode \(lidModeEnabled ? "on" : "off")")
+            note("stay awake when closed: \(lidModeEnabled ? "on" : "off")")
             evaluate()
         }
     }
@@ -34,9 +38,11 @@ final class Controller {
     @ObservationIgnored let updater = Updater()
     @ObservationIgnored private let assertion = SleepAssertion()
     @ObservationIgnored private let lid: LidGuard
-    @ObservationIgnored private var policy = Policy(config: .defaults, isAlive: isProcessAlive)
+    // Observed, so the settings window and help follow config changes.
+    private var policy = Policy(config: .defaults, isAlive: isProcessAlive)
     @ObservationIgnored private var deadlineTimer: Timer?
     @ObservationIgnored private var heartbeat: Timer?
+    @ObservationIgnored private var sleepCheck: Timer?
     @ObservationIgnored private var lastStateText = ""
 
     @ObservationIgnored let debugDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -58,6 +64,7 @@ final class Controller {
         power.onChange = { [weak self] onAC in
             self?.note("power: \(onAC ? "AC" : "battery")")
             self?.capManualHoldForPower()
+            self?.refreshPmset()
             self?.evaluate()
         }
         rex.onLog = { [weak self] line in self?.note(line) }
@@ -78,13 +85,22 @@ final class Controller {
         power.start()
         claude.start()
         rex.start()
-        // Owner liveness, lid state and local input are sampled on a slow heartbeat.
+        // Owner liveness, lid state, local input and pmset settings are sampled
+        // on a slow heartbeat.
         heartbeat = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.evaluate()
-                self?.lid.reassertIfCleared()
+                self?.refreshPmset()
             }
         }
+        refreshPmset()
+        evaluate()
+    }
+
+    /// Reads settings and evaluates an empty store, without monitors, lid
+    /// recovery or holds.
+    func startPreview() {
+        refreshPmset()
         evaluate()
     }
 
@@ -95,6 +111,17 @@ final class Controller {
     }
 
     // MARK: Config
+
+    /// Writes the settings window's changes to `config.json` and applies them.
+    func save(_ config: PolicyConfig) {
+        do {
+            try FileManager.default.createDirectory(at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try ConfigFile(policy: config).encoded().write(to: configURL)
+        } catch {
+            note("config save failed: \(error)")
+        }
+        reloadConfig()
+    }
 
     /// Loads `config.json`, writing the defaults there first if it is missing.
     /// A malformed file is reported and the previous config is kept.
@@ -113,7 +140,7 @@ final class Controller {
         evaluate()
     }
 
-    // MARK: Lid-closed mode
+    // MARK: Stay awake when closed
 
     func installLidSupport() async {
         note("lid: installing sudoers rule")
@@ -232,6 +259,7 @@ final class Controller {
         onAC = power.onAC
         batteryPercent = power.batteryPercent
         lidClosed = isLidClosed()
+        externalDisplay = hasExternalDisplay()
         lidInstalled = lid.isInstalled
         rexConnected = rex.isConnected
         thermal = ThermalLevel(ProcessInfo.processInfo.thermalState)
@@ -248,7 +276,9 @@ final class Controller {
 
         lidVerdict = LidPolicy.evaluate(next, LidContext(
             enabled: lidModeEnabled && lidInstalled, onAC: onAC, batteryPercent: batteryPercent, thermal: thermal))
+        let wasArmed = lid.isArmed
         lid.set(armed: lidVerdict.isArmed)
+        if wasArmed && !lid.isArmed { scheduleSleepCheck() }
 
         scheduleDeadline(next.nextDeadline)
         writeDebugState()
@@ -267,6 +297,35 @@ final class Controller {
         deadlineTimer = timer
     }
 
+    /// After letting go of a closed lid, gives macOS a moment to settle its
+    /// display state, then sleeps the Mac if nothing would show a screen.
+    private func scheduleSleepCheck() {
+        sleepCheck?.invalidate()
+        sleepCheck = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.sleepIfClosedWithNoDisplay() }
+        }
+    }
+
+    private func sleepIfClosedWithNoDisplay() {
+        guard !lid.isArmed else { return }
+        let closed = isLidClosed()
+        let causesSleep = clamshellCausesSleep()
+        let external = hasExternalDisplay()
+        guard LidPolicy.shouldSleepAfterDisarm(lidClosed: closed, clamshellCausesSleep: causesSleep, externalDisplay: external) else {
+            note("lid: released; staying awake (closed: \(closed), closed lid sleeps: \(causesSleep), external display: \(external))")
+            return
+        }
+        note("lid: released with the lid closed and no display; sleeping")
+        flushDebugLog()
+        sleepNow()
+    }
+
+    private func refreshPmset() {
+        guard let output = readPmsetSettings() else { return }
+        systemNeverSleeps = PmsetOutput.systemSleepMinutes(from: output) == 0
+        lid.reassertIfCleared(pmsetOutput: output)
+    }
+
     func summary(of decision: Decision) -> String {
         let holding = decision.verdicts.filter { $0.holdUntil != nil }
         guard let first = holding.first else { return "idle" }
@@ -280,6 +339,7 @@ final class Controller {
         var lines = [
             "holding: \(decision.isHolding)  assertion: \(summary(of: decision))",
             "onAC: \(onAC)  battery: \(batteryPercent.map { "\($0)%" } ?? "-")  thermal: \(thermal)  lidClosed: \(lidClosed)",
+            "externalDisplay: \(externalDisplay)  systemNeverSleeps: \(systemNeverSleeps)",
             "lid: \(lidVerdict)  installed: \(lidInstalled)  armed: \(lid.isArmed)",
             "rex: \(rexConnected) \(rex.rexURL?.path ?? "-")",
             "rex version: \(rex.versionSummary ?? "-")",

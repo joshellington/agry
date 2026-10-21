@@ -6,6 +6,7 @@ import SwiftUI
 struct HelpView: View {
     let config: PolicyConfig
     let onAC: Bool
+    var systemNeverSleeps = false
 
     private var timeouts: Timeouts { config.timeouts(onAC: onAC) }
 
@@ -13,7 +14,7 @@ struct HelpView: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("How agry works").font(.system(size: 14, weight: .semibold))
-                Text("Keeps your Mac awake while agents work, and a little after, so results and questions wait for you.")
+                Text("macOS sleeps a Mac nobody is using. agry holds that off while agents work, and a little after, so results and questions are there when you're back.")
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -22,7 +23,7 @@ struct HelpView: View {
             HelpSection(title: "The eye") {
                 GlyphLine(mood: .awake, title: "Awake", detail: "Something is keeping the Mac awake.")
                 GlyphLine(mood: .attention, title: "Needs you", detail: "An agent is blocked, waiting on you.")
-                GlyphLine(mood: .resting, title: "Resting", detail: "Nothing holding. Sleep works as usual.")
+                GlyphLine(mood: .resting, title: "Resting", detail: "Nothing holding. The Mac sleeps as usual.")
             }
 
             HelpSection(title: "Agents (\(onAC ? "on AC" : "on battery"))") {
@@ -36,30 +37,33 @@ struct HelpView: View {
             HelpSection(title: "Times") {
                 MarkLine(mark: Text("12m").monospacedDigit(), detail: "How long it has been working.")
                 MarkLine(mark: HStack(spacing: 3) { Image(systemName: "zzz").font(.system(size: 8, weight: .semibold)); Text("4m") },
-                         detail: "Until it lets the Mac sleep.")
+                         detail: "Until agry stops holding.")
                 MarkLine(mark: Image(systemName: "dot.radiowaves.left.and.right"),
                          detail: "You're away and remote control is on, so it holds at least \(format(timeouts.remote)) "
                             + "for replies from your phone. Touching the Mac cancels that.")
             }
 
-            HelpSection(title: "Lid closed") {
-                Text("macOS sleeps the moment you close the lid. With this on, agry asks it not to, but only when all of these hold:")
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                RuleLine(symbol: "eye", text: "Something is keeping the Mac awake.")
+            HelpSection(title: "Stay awake when closed") {
+                Paragraph("With the lid closed and no display on, macOS sleeps right away, mid-task or not. "
+                    + "That covers closing the lid, and turning off or unplugging an external display while the lid is shut.")
+                Paragraph("With this on, agry keeps the Mac awake through that, but only while:")
+                RuleLine(symbol: "eye", text: "Something is holding.")
                 RuleLine(symbol: "thermometer.medium", text: "The Mac isn't running hot.")
                 RuleLine(symbol: "powerplug.portrait",
-                         text: "It's plugged in, or on battery above \(LidPolicy.minimumBatteryPercent)% while you're away with remote control.")
-                Text("Otherwise the lid behaves normally. Setup adds one admin rule that allows only `pmset disablesleep`; remove it from the … menu.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                         text: "It's plugged in, or above \(LidPolicy.minimumBatteryPercent)% on battery while you're away with remote control.")
+                Paragraph("When that ends, agry puts the Mac to sleep. A display that's only asleep or on another input still counts as on.")
+                Note("Setup adds one admin rule that allows only `pmset disablesleep`. Remove it in Settings.")
             }
 
-            Text("Timeouts live in config.json (… menu → Edit Config…).")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+            if systemNeverSleeps {
+                HelpSection(title: "Your Mac") {
+                    Paragraph("macOS is set never to sleep on \(onAC ? "power adapter" : "battery") by itself, so an idle Mac stays awake "
+                        + "whatever agry does. To let it sleep when agents are done, turn off "
+                        + "\"Prevent automatic sleeping\" in System Settings › Battery › Options.")
+                }
+            }
+
+            Note("Change these times in Settings (… menu).")
         }
         .padding(16)
         .frame(width: 300)
@@ -70,6 +74,30 @@ struct HelpView: View {
         let minutes = Int(seconds / 60)
         guard minutes >= 60 else { return "\(minutes)m" }
         return minutes % 60 == 0 ? "\(minutes / 60)h" : "\(minutes / 60)h\(String(format: "%02d", minutes % 60))"
+    }
+}
+
+private struct Paragraph: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11.5))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct Note: View {
+    let text: String
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(LocalizedStringKey(text))
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

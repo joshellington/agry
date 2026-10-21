@@ -21,4 +21,11 @@ import Testing
     @Test func malformedFileThrows() {
         #expect(throws: (any Error).self) { try ConfigFile.parse(Data(#"{"ac":{"blockedMinutes":"ten"}}"#.utf8)) }
     }
+
+    @Test func savedPolicyRoundTrips() throws {
+        var policy = PolicyConfig.defaults
+        policy.ac.remote = 90 * 60
+        policy.battery.workingCap = 30 * 60
+        #expect(try ConfigFile.parse(ConfigFile(policy: policy).encoded()).policy == policy)
+    }
 }

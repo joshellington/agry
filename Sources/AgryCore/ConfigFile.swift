@@ -35,15 +35,28 @@ public struct ConfigFile: Codable, Equatable, Sendable {
             battery: battery?.applied(to: base.battery) ?? base.battery)
     }
 
+    public init(ac: Profile? = nil, battery: Profile? = nil) {
+        self.ac = ac
+        self.battery = battery
+    }
+
+    /// Every value written out, as the settings window saves it.
+    public init(policy: PolicyConfig) {
+        self.init(ac: Profile(policy.ac), battery: Profile(policy.battery))
+    }
+
+    public func encoded() -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return (try? encoder.encode(self)) ?? Data("{}".utf8)
+    }
+
     public static func parse(_ data: Data) throws -> ConfigFile {
         try JSONDecoder().decode(ConfigFile.self, from: data)
     }
 
     /// The defaults written out in full, as a starting point for editing.
     public static func defaultsJSON() -> Data {
-        let file = ConfigFile(ac: Profile(PolicyConfig.defaults.ac), battery: Profile(PolicyConfig.defaults.battery))
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return (try? encoder.encode(file)) ?? Data("{}".utf8)
+        ConfigFile(policy: .defaults).encoded()
     }
 }
