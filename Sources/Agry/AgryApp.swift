@@ -72,6 +72,7 @@ private func renderSnapshot(controller: Controller, to url: URL) {
         let view = PanelView(controller: controller, navigation: navigation, allowsScrolling: false)
             .background(Color(white: 0.11))
             .environment(\.colorScheme, scheme)
+            .environment(\.rendersStatically, true)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,

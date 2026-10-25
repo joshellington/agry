@@ -346,18 +346,82 @@ private struct ProgressRing: View {
     }
 }
 
+/// An indeterminate spinner. The arc turns in Core Animation: a repeating
+/// SwiftUI animation re-renders and re-lays out the whole panel every frame.
 private struct Spinner: View {
-    @State private var spinning = false
+    @Environment(\.rendersStatically) private var rendersStatically
 
     var body: some View {
-        Circle()
-            .trim(from: 0, to: 0.7)
-            .stroke(.primary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            .frame(width: 9, height: 9)
-            .rotationEffect(.degrees(spinning ? 360 : 0))
-            .animation(.linear(duration: 1.1).repeatForever(autoreverses: false), value: spinning)
-            .onAppear { spinning = true }
+        Group {
+            if rendersStatically {
+                // ImageRenderer can't draw an AppKit view.
+                Circle()
+                    .trim(from: 0, to: 0.7)
+                    .stroke(.primary, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            } else {
+                SpinnerArc()
+            }
+        }
+        .frame(width: 9, height: 9)
     }
+}
+
+private struct SpinnerArc: NSViewRepresentable {
+    func makeNSView(context: Context) -> SpinnerArcView { SpinnerArcView() }
+    func updateNSView(_ view: SpinnerArcView, context: Context) {}
+}
+
+private final class SpinnerArcView: NSView {
+    private let arc = CAShapeLayer()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        arc.fillColor = nil
+        arc.lineWidth = 1.5
+        arc.lineCap = .round
+        arc.strokeEnd = 0.7
+        layer?.addSublayer(arc)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func layout() {
+        super.layout()
+        arc.frame = bounds
+        let inset = arc.lineWidth / 2
+        arc.path = CGPath(ellipseIn: bounds.insetBy(dx: inset, dy: inset), transform: nil)
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateColor()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        updateColor()
+        guard arc.animation(forKey: "spin") == nil else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = -2 * Double.pi // clockwise in AppKit's unflipped layer space
+        spin.duration = 1.1
+        spin.repeatCount = .infinity
+        spin.isRemovedOnCompletion = false
+        arc.add(spin, forKey: "spin")
+    }
+
+    private func updateColor() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            arc.strokeColor = NSColor.labelColor.cgColor
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// True under ImageRenderer, which draws only pure SwiftUI views.
+    @Entry var rendersStatically = false
 }
 
 private struct RemoteMark: View {

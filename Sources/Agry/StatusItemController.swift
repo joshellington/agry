@@ -28,6 +28,7 @@ final class StatusItemController: NSObject {
     private var outsideClickMonitor: Any?
     private var keyMonitor: Any?
     private let settings: AppWindow
+    private var shownMood: EyeGlyph.Mood?
 
     init(controller: Controller) {
         self.controller = controller
@@ -41,7 +42,6 @@ final class StatusItemController: NSObject {
             self?.settings.show()
         }
 
-        hosting.rootView = AnyView(PanelView(controller: controller, navigation: navigation))
         hosting.onFittingSizeChange = { [weak self] in self?.fitPanel() }
 
         let background = NSVisualEffectView()
@@ -71,13 +71,16 @@ final class StatusItemController: NSObject {
 
     // MARK: Icon
 
-    /// Redraws the icon whenever the mood changes.
+    /// Redraws the icon whenever the mood changes. Observation fires on every
+    /// evaluation (each Rex event), so an unchanged mood is skipped.
     private func trackIcon() {
         let mood = withObservationTracking {
             controller.mood
         } onChange: { [weak self] in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.trackIcon() } }
         }
+        guard mood != shownMood else { return }
+        shownMood = mood
         statusItem.button?.image = EyeGlyph.menuBarImage(mood)
         statusItem.button?.setAccessibilityLabel(mood == .resting ? "agry: sleep allowed" : "agry: keeping awake")
     }
@@ -94,6 +97,7 @@ final class StatusItemController: NSObject {
 
     func openPanel() {
         controller.evaluate()
+        hosting.rootView = AnyView(PanelView(controller: controller, navigation: navigation))
         fitPanel()
         panel.orderFrontRegardless()
         panel.makeKey()
@@ -120,6 +124,10 @@ final class StatusItemController: NSObject {
 
     func closePanel() {
         panel.orderOut(nil)
+        // SwiftUI keeps animating a hidden window's views (the working
+        // spinner), and each frame re-lays out and re-measures the panel.
+        // Unmount the content so a closed panel costs nothing.
+        hosting.rootView = AnyView(EmptyView())
         statusItem.button?.highlight(false)
         navigation.selected = nil
         navigation.keepAwakeOpen = false
@@ -175,23 +183,33 @@ final class AgryPanel: NSPanel {
 final class SizeReportingHostingView<Content: View>: NSHostingView<Content> {
     var onFittingSizeChange: (() -> Void)?
     private var lastSize = NSSize.zero
+    private var checkPending = false
 
     override func invalidateIntrinsicContentSize() {
         super.invalidateIntrinsicContentSize()
-        reportIfChanged()
+        scheduleCheck()
     }
 
     override func layout() {
         super.layout()
-        reportIfChanged()
+        scheduleCheck()
+    }
+
+    /// Measuring builds a throwaway layout engine, and both hooks fire on
+    /// every frame of an animation, so measure once per run loop turn.
+    private func scheduleCheck() {
+        guard !checkPending else { return }
+        checkPending = true
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { self?.reportIfChanged() }
+        }
     }
 
     private func reportIfChanged() {
+        checkPending = false
         let size = fittingSize
         guard size != lastSize else { return }
         lastSize = size
-        DispatchQueue.main.async { [weak self] in
-            MainActor.assumeIsolated { self?.onFittingSizeChange?() }
-        }
+        onFittingSizeChange?()
     }
 }
