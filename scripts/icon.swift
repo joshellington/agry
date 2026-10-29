@@ -1,6 +1,6 @@
 // Renders agry's app icon (a skull of Rex's mascot, traced from its outline, on
-// a dark squircle) into Resources/AppIcon.icns. The skull matches SkullGlyph's
-// paths, plus teeth. Run from the repo root: swift scripts/icon.swift
+// a dark squircle) into Resources/AppIcon.icns. Run from the repo root:
+// swift scripts/icon.swift
 import AppKit
 
 extension NSBezierPath {

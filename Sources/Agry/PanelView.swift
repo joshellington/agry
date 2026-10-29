@@ -6,8 +6,8 @@ import SwiftUI
 /// user, red for errors. States are told apart by shape, not hue.
 enum Theme {
     static let width: CGFloat = 340
-    /// Sodium-lamp amber: needs you. Also the skull's eye socket.
-    static let amber = Color(nsColor: SkullGlyph.attentionColor)
+    /// Sodium-lamp amber: needs you. Also the eye's pupil.
+    static let amber = Color(nsColor: EyeGlyph.attentionColor)
     static let red = Color(red: 1.0, green: 0.42, blue: 0.37)
     static let hairline = Color.white.opacity(0.08)
     static let wash = Color.white.opacity(0.05)
@@ -111,7 +111,7 @@ private struct HeaderView: View {
     var body: some View {
         let mood = controller.mood
         HStack(alignment: .center, spacing: 11) {
-            SkullGlyphView(mood: mood, lineWidth: 1.5)
+            EyeGlyphView(mood: mood, lineWidth: 1.5)
                 .foregroundStyle(mood == .resting ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 1) {
@@ -127,7 +127,7 @@ private struct HeaderView: View {
         }
     }
 
-    private func title(_ mood: SkullGlyph.Mood) -> String {
+    private func title(_ mood: EyeGlyph.Mood) -> String {
         switch mood {
         case .awake: "Awake"
         case .attention: "Needs you"

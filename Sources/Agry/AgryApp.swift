@@ -55,7 +55,7 @@ struct AgryApp: App {
 }
 
 extension Controller {
-    var mood: SkullGlyph.Mood {
+    var mood: EyeGlyph.Mood {
         guard decision.isHolding else { return .resting }
         return rows.contains { $0.state == .blocked && $0.holdUntil != nil } ? .attention : .awake
     }
@@ -82,10 +82,10 @@ private func renderSnapshot(controller: Controller, to url: URL) {
         try? png.write(to: target)
     }
     let glyphs = HStack(spacing: 24) {
-        ForEach([SkullGlyph.Mood.awake, .attention, .resting], id: \.self) { mood in
+        ForEach([EyeGlyph.Mood.awake, .attention, .resting], id: \.self) { mood in
             VStack(spacing: 10) {
-                SkullGlyphView(mood: mood).frame(width: 80)
-                Image(nsImage: SkullGlyph.menuBarImage(mood))
+                EyeGlyphView(mood: mood).frame(width: 80)
+                Image(nsImage: EyeGlyph.menuBarImage(mood))
             }
         }
     }
