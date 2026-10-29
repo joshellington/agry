@@ -28,7 +28,7 @@ final class StatusItemController: NSObject {
     private var outsideClickMonitor: Any?
     private var keyMonitor: Any?
     private let settings: AppWindow
-    private var shownMood: EyeGlyph.Mood?
+    private var shownMood: SkullGlyph.Mood?
 
     init(controller: Controller) {
         self.controller = controller
@@ -81,7 +81,7 @@ final class StatusItemController: NSObject {
         }
         guard mood != shownMood else { return }
         shownMood = mood
-        statusItem.button?.image = EyeGlyph.menuBarImage(mood)
+        statusItem.button?.image = SkullGlyph.menuBarImage(mood)
         statusItem.button?.setAccessibilityLabel(mood == .resting ? "agry: sleep allowed" : "agry: keeping awake")
     }
 

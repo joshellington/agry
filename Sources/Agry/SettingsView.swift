@@ -28,7 +28,7 @@ struct SettingsView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 30) {
             HStack(alignment: .top, spacing: 16) {
-                EyeGlyphView(mood: .awake, lineWidth: 2).frame(width: 44)
+                SkullGlyphView(mood: .awake, lineWidth: 2).frame(width: 44)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("agry").font(.system(size: 18, weight: .semibold))
                     Paragraph("macOS sleeps a Mac nobody is using. agry holds that off while your agents work, "
@@ -94,9 +94,9 @@ struct SettingsView: View {
 
             SettingsSection("Reading the menu bar") {
                 HStack(alignment: .top, spacing: 12) {
-                    EyeCard(mood: .awake, title: "Awake", detail: "Something is keeping the Mac awake.")
-                    EyeCard(mood: .attention, title: "Needs you", detail: "An agent is waiting on you.")
-                    EyeCard(mood: .resting, title: "Resting", detail: "Nothing holding; the Mac sleeps as usual.")
+                    GlyphCard(mood: .awake, title: "Awake", detail: "Something is keeping the Mac awake.")
+                    GlyphCard(mood: .attention, title: "Needs you", detail: "An agent is waiting on you.")
+                    GlyphCard(mood: .resting, title: "Resting", detail: "Nothing holding; the Mac sleeps as usual.")
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 28) {
                     MarkLine(detail: "How long it has been working") { Text("12m").monospacedDigit() }
@@ -249,15 +249,15 @@ private struct HoldTable: View {
     }
 }
 
-private struct EyeCard: View {
-    let mood: EyeGlyph.Mood
+private struct GlyphCard: View {
+    let mood: SkullGlyph.Mood
     let title: String
     let detail: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            EyeGlyphView(mood: mood, lineWidth: 1.5)
-                .frame(width: 26, height: 18)
+            SkullGlyphView(mood: mood, lineWidth: 1.5)
+                .frame(width: 22, height: 22)
                 .foregroundStyle(mood == .resting ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             Text(title).font(.system(size: 12.5, weight: .medium))
             Text(detail)
