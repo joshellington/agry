@@ -19,6 +19,9 @@ private enum Fixture {
     static let claudeBusyRemote = #"{"pid":87514,"sessionId":"df28","cwd":"/Users/dev/Projects/agry","kind":"interactive","name":"agry-8f","status":"busy","bridgeSessionId":"session_01Qig"}"#
     static let claudeIdleLocal = #"{"pid":74251,"status":"idle"}"#
     static let claudeOddStatus = #"{"pid":1,"status":"compacting","bridgeSessionId":""}"#
+    /// An interactive session sent to the background: its file keeps the last
+    /// status while the background job's own file reports the work.
+    static let claudeParked = #"{"pid":1,"cwd":"/p/teev-web","status":"busy","bridgeSessionId":null,"parkedJobId":"a79a0a4a"}"#
 }
 
 @Suite struct RexParserTests {
@@ -137,6 +140,11 @@ private enum Fixture {
         let session = ClaudeSession.parse(Data(Fixture.claudeOddStatus.utf8))
         #expect(session?.record(observedAt: Date()) == nil)
         #expect(session?.isRemote == false)
+    }
+
+    @Test func parkedSessionYieldsNoRecord() {
+        let session = ClaudeSession.parse(Data(Fixture.claudeParked.utf8))
+        #expect(session?.record(observedAt: Date()) == nil)
     }
 
     @Test func garbageIsRejected() {

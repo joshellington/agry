@@ -14,6 +14,9 @@ public struct ClaudeSession: Equatable, Sendable {
     public var rawStatus: String?
     /// True when the session is bridged to claude.ai (remote control).
     public var isRemote: Bool
+    /// Set when the session was sent to the background. Its file then keeps
+    /// the last status forever; the background job's own file reports instead.
+    public var parkedJobID: String? = nil
 
     public static func parse(_ data: Data) -> ClaudeSession? {
         guard let file = try? JSONDecoder().decode(File.self, from: data) else { return nil }
@@ -24,11 +27,12 @@ public struct ClaudeSession: Equatable, Sendable {
             name: file.name,
             state: file.status.flatMap(state(forStatus:)),
             rawStatus: file.status,
-            isRemote: !(file.bridgeSessionId ?? "").isEmpty)
+            isRemote: !(file.bridgeSessionId ?? "").isEmpty,
+            parkedJobID: file.parkedJobId.flatMap { $0.isEmpty ? nil : $0 })
     }
 
     public func record(observedAt now: Date) -> StatusRecord? {
-        guard let state else { return nil }
+        guard let state, parkedJobID == nil else { return nil }
         return StatusRecord(source: .claudeSession(pid: pid), state: state, app: "claude-code",
                             message: name, ownerPID: pid, stateSince: now)
     }
@@ -48,5 +52,6 @@ public struct ClaudeSession: Equatable, Sendable {
         var name: String?
         var status: String?
         var bridgeSessionId: String?
+        var parkedJobId: String?
     }
 }

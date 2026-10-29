@@ -246,7 +246,7 @@ final class Controller {
                 store.remove(.claudeSession(pid: session.pid))
             }
         }
-        let summary = sessions.map { "\($0.pid):\($0.rawStatus ?? "?")\($0.isRemote ? "+rc" : "")" }
+        let summary = sessions.map { "\($0.pid):\($0.rawStatus ?? "?")\($0.isRemote ? "+rc" : "")\($0.parkedJobID != nil ? "+parked" : "")" }
         note("claude sessions: \(summary.joined(separator: " "))")
         claudeSessions = sessions
         evaluate()
